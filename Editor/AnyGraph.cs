@@ -43,7 +43,9 @@ public sealed class AnyGraph : EditorWindow {
 
 	private bool _linkingNode = false;
 	private IAnyGraphNode _nodeToLink = null;
-	
+
+	private List<AnyGraphAliasNode> _aliases = new List<AnyGraphAliasNode>();
+
 	[MenuItem("Window/AnyGraph")]
 	public static void Openwindow(){
 		AnyGraph window = EditorWindow.GetWindow<AnyGraph>("Any Graph", true);
@@ -67,6 +69,7 @@ public sealed class AnyGraph : EditorWindow {
 		_lastGraphExtents = new Rect();
 		_initialDragNodePosition = new Dictionary<IAnyGraphNode, Rect>();
 		_selected = null;
+		_aliases = new List<AnyGraphAliasNode>();
 	}
 
 	/// <summary>
@@ -206,19 +209,19 @@ public sealed class AnyGraph : EditorWindow {
 			_optionWindowScrollPos = GUILayout.BeginScrollView(_optionWindowScrollPos, GUILayout.MaxHeight (_optionWindowRect.height - 20));
 
 			if(GUILayout.Button ("Structure")){
-				bool redundant = false;
-				foreach(IAnyGraphNode node in _grabbedNodes){
-					if(node.IsRedundant(new List<IAnyGraphNode>())){
-						redundant = true;
-						break;
-					}
-				}
-				if(!redundant){
+//				bool redundant = false;
+//				foreach(IAnyGraphNode node in _grabbedNodes){
+//					if(node.IsTreeRedundant(new List<IAnyGraphNode>())){
+//						redundant = true;
+//						break;
+//					}
+//				}
+//				if(!redundant){
 					RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
-				}
-				else{
-					Debug.LogWarning ("A node was found to be redundant. Cancelling tree fromatting.");
-				}
+//				}
+//				else{
+//					Debug.LogWarning ("A node was found to be redundant. Cancelling tree fromatting.");
+//				}
 			}
 
 			// Buttons for manual linking/unlinking.
@@ -904,11 +907,32 @@ public sealed class AnyGraph : EditorWindow {
 	/// <param name="xSpacing">X spacing.</param>
 	/// <param name="ySpacing">Y spacing.</param>
 	private void RearrangeNodesAsTree(float xSpacing, float ySpacing){
-		// Check if graph is redundant.
+		int antiLoop = 0;
+		for(int i = 0; i < _grabbedNodes.Count; i++){
+			if(_grabbedNodes[i] != null && _grabbedNodes[i].IsNodeRedundant()){
+				while(_grabbedNodes[i].IsNodeRedundant()){
+
+					IAnyGraphNode instigator = _grabbedNodes[i].GetRedundancyInstigator ();
+					if(instigator == null){
+						break;
+					}
+
+					AnyGraphLink aliasedLink = new AnyGraphLink();
+					aliasedLink.connection = new AnyGraphAliasNode(_grabbedNodes[i]) as IAnyGraphNode; 
+					aliasedLink.linkText = _grabbedNodes.Find (x => x == instigator).ConnectedNodes.Find (x => x.connection == _grabbedNodes[i]).linkText;
+					_grabbedNodes.Add (aliasedLink.connection);
+
+					instigator.ConnectedNodes[instigator.ConnectedNodes.FindIndex(x => x.connection == _grabbedNodes[i])] = aliasedLink;
+				}
+			}
+		}
+
+		_selected.Nodes = _grabbedNodes;
 
 		List<List<IAnyGraphNode>> allNodeLevels = new List<List<IAnyGraphNode>>();
 		List<IAnyGraphNode> nonRootNodes = new List<IAnyGraphNode>();
-		List<IAnyGraphNode> rootNodes = _selected.Nodes;
+		List<IAnyGraphNode> rootNodes = new List<IAnyGraphNode>();
+		rootNodes.AddRange(_selected.Nodes);
 		foreach(IAnyGraphNode node in _selected.Nodes){
 			foreach(IAnyGraphNode connection in node.ConnectedNodes.Select (x => x.connection)){
 				if(rootNodes.Contains(connection)){
@@ -919,6 +943,7 @@ public sealed class AnyGraph : EditorWindow {
 		}
 
 		allNodeLevels.Add (rootNodes);
+		antiLoop = 0;
 		int levelCount = 0;
 		while(nonRootNodes.Count > 0){
 			List<IAnyGraphNode> newLevel = new List<IAnyGraphNode>();
@@ -939,9 +964,16 @@ public sealed class AnyGraph : EditorWindow {
 
 			allNodeLevels.Add (newLevel);
 			levelCount++;
+
+			if(antiLoop > 500){
+				Debug.Log ("Stuck in a loop.");
+				break;
+			}
+			antiLoop++;
 		}
 
 		//Last level check
+		antiLoop = 0;
 		while(true){
 			List<IAnyGraphNode> nodesToMove = new List<IAnyGraphNode>();
 			foreach(IAnyGraphNode node in allNodeLevels.Last ()){
@@ -960,6 +992,13 @@ public sealed class AnyGraph : EditorWindow {
 				allNodeLevels.Last ().Remove (toMove);
 			}
 			allNodeLevels.Add (nodesToMove);
+
+			
+			if(antiLoop > 500){
+				Debug.Log ("Stuck in a loop 2.");
+				break;
+			}
+			antiLoop++;
 		}
 
 		List<Rect> levelRects = new List<Rect>();

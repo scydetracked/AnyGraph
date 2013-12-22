@@ -15,8 +15,9 @@ public interface IAnyGraphable{
 
 	/// <summary>
 	/// List of nodes that get called for drawing.
+	/// This should point to a serializable reference for alias nodes to work.
 	/// </summary>
-	List<IAnyGraphNode> Nodes{get;}
+	List<IAnyGraphNode> Nodes{get; set;}
 	
 	/// <summary>
 	/// Function called to draw a node.

@@ -30,7 +30,7 @@ public interface IAnyGraphNode {
 	/// <summary>
 	/// Gets the connected nodes to draw the links.
 	/// </summary>
-	List<AnyGraphLink> ConnectedNodes{get;}
+	List<AnyGraphLink> ConnectedNodes{get; set;}
 
 	/// <summary>
 	/// Used to display the node is currently active.
