@@ -151,12 +151,16 @@ public sealed class AnyGraph : EditorWindow {
 			Reset ();
 			return;
 		}
+		else if((_selected as UnityEngine.Component) == null){
+			_selected = null;
+			Reset ();
+			return;
+		}
 
 		// Create a new settings instance if one doesn't exist.
 		if(_selected.Settings == null){
 			_selected.Settings = new AnyGraphSettings();
 		}
-
 
 		Rect scrollViewRect = EditorZoomArea.Begin (_zoom, new Rect(0, 0, position.width - _optionWindowRect.width, position.height));
 		scrollViewRect.y -= 21;
@@ -351,7 +355,7 @@ public sealed class AnyGraph : EditorWindow {
 	/// Draws the links.
 	/// </summary>
 	private void DrawLinks(){
-		foreach(KeyValuePair<IAnyGraphNode, AnyGraphLink> link in _links){
+		foreach(KeyValuePair<IAnyGraphNode, AnyGraphLink> link in _links.Where (x => x.Value.connection != null)){
 			Color linkColor = _selected.Settings.baseLinkColor;
 			if(_selected.Settings.colorFromSelected && _selection.Contains (link.Key.EditorObj) &&
 			   _selected.Settings.colorToSelected && _selection.Contains (link.Value.connection.EditorObj)){
@@ -402,7 +406,7 @@ public sealed class AnyGraph : EditorWindow {
 
 		// Color if the node is going to the selected node.
 		if(_selected.Settings.colorToSelected){
-			foreach(UnityEngine.Object connections in node.ConnectedNodes.Select (x => x.connection.EditorObj)){
+			foreach(UnityEngine.Object connections in node.ConnectedNodes.Where (x => x.connection != null).Select (x => x.connection.EditorObj)){
 				if(_selection.Contains (connections)){
 					nodeColor = (UnityEditor.Graphs.Styles.Color)(int)_selected.Settings.toNodeColor;
 					break;
@@ -428,6 +432,9 @@ public sealed class AnyGraph : EditorWindow {
 		// Draw node.
 		node.EditorPos = GUILayout.Window (_selected.Nodes.FindIndex (x => x.Equals(node)), node.EditorPos, delegate{
 			bool repaint = false;
+			Rect edPos = node.EditorPos;
+			edPos.width = Mathf.Max (node.EditorPos.width, GUILayoutUtility.GetRect (new GUIContent(node.Name), "Label").width);
+			node.EditorPos = edPos;
 			SelectNode (node);
 
 			if(_selected.Settings.allowNodeLinking && GUILayout.Button ("Link To...")){
@@ -916,7 +923,7 @@ public sealed class AnyGraph : EditorWindow {
 		while(nonRootNodes.Count > 0){
 			List<IAnyGraphNode> newLevel = new List<IAnyGraphNode>();
 			foreach(IAnyGraphNode prevNode in allNodeLevels[levelCount]){
-				foreach(IAnyGraphNode connectedNode in prevNode.ConnectedNodes.Select (x => x.connection)){
+				foreach(IAnyGraphNode connectedNode in prevNode.ConnectedNodes.Where (x => x.connection != null).Select (x => x.connection)){
 					if(!newLevel.Contains (connectedNode)){
 						newLevel.Add (connectedNode);
 					}

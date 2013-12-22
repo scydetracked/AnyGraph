@@ -9,7 +9,7 @@ public static class AnyGraphNodeExt {
 			return false;
 		}
 
-		foreach(IAnyGraphNode current in node.ConnectedNodes.Select (x => x.connection)){
+		foreach(IAnyGraphNode current in node.ConnectedNodes.Where (x => x.connection != null).Select (x => x.connection)){
 			if(scanned.Contains (current)){
 				return true;
 			}
