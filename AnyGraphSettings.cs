@@ -81,4 +81,9 @@ public sealed class AnyGraphSettings {
 	/// The offset used by the editor when repositionning nodes.
 	/// </summary>
 	public Vector2 nodePlacementOffset = new Vector2(150, 30);
+
+	/// <summary>
+	/// If set to true, the graph will automatically rearrange itself and create alias nodes.
+	/// </summary>
+	public bool autoTreePlacement = true;
 }

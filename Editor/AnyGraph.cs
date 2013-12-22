@@ -31,7 +31,7 @@ public sealed class AnyGraph : EditorWindow {
 	private Vector2 _dragStartPoint;
 	private SelectionDragType _dragType = SelectionDragType.None;
 
-	private List<IAnyGraphNode> _grabbedNodes;
+	private List<IAnyGraphNode> _grabbedNodes = new List<IAnyGraphNode>();
 	private List<KeyValuePair<IAnyGraphNode, AnyGraphLink>> _links;
 
 	private bool _optionWindowOpen = false;
@@ -70,6 +70,8 @@ public sealed class AnyGraph : EditorWindow {
 		_initialDragNodePosition = new Dictionary<IAnyGraphNode, Rect>();
 		_selected = null;
 		_aliases = new List<AnyGraphAliasNode>();
+		_grabbedNodes = new List<IAnyGraphNode>();
+
 	}
 
 	/// <summary>
@@ -164,6 +166,10 @@ public sealed class AnyGraph : EditorWindow {
 		if(_selected.Settings == null){
 			_selected.Settings = new AnyGraphSettings();
 		}
+		
+		if(_selected.Settings.autoTreePlacement){
+			RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
+		}
 
 		Rect scrollViewRect = EditorZoomArea.Begin (_zoom, new Rect(0, 0, position.width - _optionWindowRect.width, position.height));
 		scrollViewRect.y -= 21;
@@ -208,20 +214,8 @@ public sealed class AnyGraph : EditorWindow {
 		else{
 			_optionWindowScrollPos = GUILayout.BeginScrollView(_optionWindowScrollPos, GUILayout.MaxHeight (_optionWindowRect.height - 20));
 
-			if(GUILayout.Button ("Structure")){
-//				bool redundant = false;
-//				foreach(IAnyGraphNode node in _grabbedNodes){
-//					if(node.IsTreeRedundant(new List<IAnyGraphNode>())){
-//						redundant = true;
-//						break;
-//					}
-//				}
-//				if(!redundant){
-					RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
-//				}
-//				else{
-//					Debug.LogWarning ("A node was found to be redundant. Cancelling tree fromatting.");
-//				}
+			if(!_selected.Settings.autoTreePlacement && GUILayout.Button ("Structure")){
+				RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
 			}
 
 			// Buttons for manual linking/unlinking.
@@ -258,6 +252,7 @@ public sealed class AnyGraph : EditorWindow {
 			if(_showOptionsGraphSettings){
 				EditorGUI.indentLevel++;
 				_selected.Settings.nodePlacementOffset = EditorGUILayout.Vector2Field ("Auto-Placement Offset", _selected.Settings.nodePlacementOffset);
+				_selected.Settings.autoTreePlacement = EditorGUILayout.Toggle ("Auto Graph Restructuring", _selected.Settings.autoTreePlacement);
 				_selected.Settings.allowNodeLinking = EditorGUILayout.Toggle ("Allow Node Linking", _selected.Settings.allowNodeLinking);
 				_selected.Settings.drawLinkOnTop = EditorGUILayout.Toggle ("Draw Links On Top", _selected.Settings.drawLinkOnTop);
 				_selected.Settings.linkWidth = EditorGUILayout.FloatField ("Link Width", _selected.Settings.linkWidth);
