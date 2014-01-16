@@ -36,7 +36,7 @@ namespace AnyGraph{
 		// Non anygraph specific.
 		private Dictionary<Node, Rect> _initialDragNodePosition = new Dictionary<Node, Rect>();
 		private List<Rect> _allNodePos = new List<Rect>();
-		private List<IAnyGraphNode> _grabbedNodes = new List<IAnyGraphNode>();
+		private List<IAnyGraphNode> _cachedNodes = new List<IAnyGraphNode>();
 		private IAnyGraphable _selected = null;
 		private bool _linkingNode = false;
 		private IAnyGraphNode _nodeToLink = null;
@@ -61,6 +61,40 @@ namespace AnyGraph{
 		/// Resets important values for the AnyGraph window.
 		/// </summary>
 		private void Reset(){
+			_zoomArea = new Rect();
+			_zoom = 1.0f;
+			_zoomCoordsOrigin = Vector2.zero;
+			
+			_nodeDragDistance = new Vector2();
+			_initMousePos = new Vector2();
+			
+			scrollPos = new Vector2();
+			_graphExtents = new Rect();
+			_lastGraphExtents = new Rect();
+			_dragStartPoint = new Vector2();
+			_dragType = SelectionDragType.None;
+			
+			_optionWindowOpen = false;
+			_optionWindowRect = new Rect();
+			_optionWindowScrollPos = new Vector2();
+			_showOptionsGraphSettings = false;
+			
+			
+			// Non anygraph specific.
+			_initialDragNodePosition = new Dictionary<Node, Rect>();
+			_allNodePos = new List<Rect>();
+			_cachedNodes = new List<IAnyGraphNode>();
+			_selected = null;
+			_linkingNode = false;
+			_nodeToLink = null;
+			_aliases = new List<AnyGraphAliasNode>();
+			
+			// New Node & Link systems
+			_allNodes = new List<Node>();
+			_selection = new List<Node>();
+			_oldSelection = new List<Node>();
+			////
+/*
 			_selection = new List<Node>();
 			_oldSelection = new List<Node>();
 			_nodeDragDistance = new Vector2();
@@ -71,8 +105,10 @@ namespace AnyGraph{
 			_initialDragNodePosition = new Dictionary<Node, Rect>();
 			_selected = null;
 			_aliases = new List<AnyGraphAliasNode>();
-			_grabbedNodes = new List<IAnyGraphNode>();
+			_cachedNodes = new List<IAnyGraphNode>();
 			_allNodePos = new List<Rect>();
+*/
+			System.GC.Collect ();
 		}
 
 		/// <summary>
@@ -117,20 +153,22 @@ namespace AnyGraph{
 		private void Update(){Repaint ();}
 
 		private void GenerateCompleteNodeMap(List<IAnyGraphNode> nodes){
+			_cachedNodes = nodes;
 			_allNodes = new List<Node>();
-			List<IAnyGraphNode> rootNodes = nodes;
+			List<IAnyGraphNode> rootNodes = new List<IAnyGraphNode>();
+			rootNodes.AddRange(_cachedNodes);
 
-			foreach(IAnyGraphNode n in nodes){
+			foreach(IAnyGraphNode n in _cachedNodes){
 				foreach(AnyGraphLink l in n.ConnectedNodes){
 					rootNodes.Remove (l.connection);
 				}
 			}
 
-			foreach(IAnyGraphNode root in rootNodes){
+			foreach(IAnyGraphNode root in rootNodes.Where (x => x != null)){
 				Node newNode = new Node(){
 					representedNode = root,
 					isRoot = true,
-					guid = new System.Guid().ToString (),
+					guid = System.Guid.NewGuid ().ToString (),
 					links = new List<Link>(),
 					nodePos = new Rect()
 				};
@@ -138,6 +176,8 @@ namespace AnyGraph{
 				_allNodes.Add (newNode);
 				_allNodes.AddRange (newNode.SetupRecursively ());
 			}
+
+			Debug.Log ("Complete node map was generated.");
 		}
 
 		private void OnGUI(){
@@ -151,15 +191,29 @@ namespace AnyGraph{
 
 			HandleEvents ();
 			_zoomArea = new Rect(0, 0, position.width - _optionWindowRect.width, position.height);
-			List<MonoBehaviour> availableToDraw = null;
+			List<MonoBehaviour> availableToDraw = new List<MonoBehaviour>();
+			if(Selection.activeGameObject != null){
+			 availableToDraw = Selection.activeGameObject.GetComponents<MonoBehaviour>().Where(x => (x is IAnyGraphable)).ToList();
+			}
 
 			// Change the selected object if it can be drawn.
-			if(_selected != Selection.activeObject as IAnyGraphable && Selection.activeObject is IAnyGraphable){
+			if((_selected == null || _selected != Selection.activeObject as IAnyGraphable) && Selection.activeObject is IAnyGraphable){
+				Reset ();
 				_selected = Selection.activeObject as IAnyGraphable;
 				GenerateCompleteNodeMap (_selected.Nodes);
 				Repaint ();
 			}
-			else if(Selection.activeObject is GameObject){
+			else if(availableToDraw.Count > 0){
+				for(int i = 0; i < availableToDraw.Count; i++){
+					if(availableToDraw[i] != null && availableToDraw[i] as IAnyGraphable != _selected){
+						Reset ();
+						_selected = Selection.activeGameObject.GetComponents<MonoBehaviour>().Where(x => (x is IAnyGraphable)).ToArray ()[0] as IAnyGraphable;
+						GenerateCompleteNodeMap (_selected.Nodes);
+						Repaint ();
+					}
+				}
+			}
+			/*else if(Selection.activeObject != null && Selection.activeObject is GameObject && Selection.activeGameObject.GetComponent<MonoBehaviour>().w != (_selected as Component).gameObject){
 				// Grab all IAnyGraphable instances on the selected object.
 				availableToDraw = Selection.activeGameObject.GetComponents<MonoBehaviour>().Where (x => x is IAnyGraphable).ToList ();
 				if(availableToDraw.Count == 1){
@@ -169,7 +223,8 @@ namespace AnyGraph{
 					_selected = availableToDraw[0] as IAnyGraphable;
 					// TODO: Draw a selection box for user to choose which instance to draw.
 				}
-			}
+				GenerateCompleteNodeMap (_selected.Nodes);
+			}*/
 
 			// Draw Background and grid.
 			GUI.Box (new Rect(0, 0, position.width, position.height), "", UnityEditor.Graphs.Styles.graphBackground);
@@ -193,24 +248,18 @@ namespace AnyGraph{
 				_selected.Settings = new AnyGraphSettings();
 			}
 			
-			if(_selected.Settings.autoTreePlacement){
+			/*if(_selected.Settings.autoTreePlacement){
 				RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
-			}
+			}*/
 
 			Rect scrollViewRect = EditorZoomArea.Begin (_zoom, new Rect(0, 0, position.width - _optionWindowRect.width, position.height));
 			scrollViewRect.y -= 21;
 			scrollPos = GUI.BeginScrollView (scrollViewRect, scrollPos, _graphExtents, GUIStyle.none, GUIStyle.none);
 
-			DrawNodes();
 			DrawLinks ();
-			// HACK: Redraws the nodes to be over the links because the nodes need to be drawn for the links to work.
-			if(!_selected.Settings.drawLinkOnTop){
-				DrawNodes();
-			}
+			DrawNodes();
 
 			DragSelection(new Rect(-5000f, -5000f, 10000f, 10000f));
-			
-			_graphExtents = GetGraphExtents();
 
 			UpdateScrollPosition ();
 			DragGraph();
@@ -381,6 +430,9 @@ namespace AnyGraph{
 		private void DrawLinks(){
 			foreach(Node n in _allNodes){
 				foreach(Link l in n.links){
+					if(string.IsNullOrEmpty(l.guid)){
+						return;
+					}
 					Color linkColor = _selected.Settings.baseLinkColor;
 					/*if(_selected.Settings.colorFromSelected && _selection.Contains (link.Key.EditorObj) &&
 				   _selected.Settings.colorToSelected && _selection.Contains (link.Value.connection.EditorObj)){
@@ -392,7 +444,8 @@ namespace AnyGraph{
 					else if(_selected.Settings.colorToSelected && _selection.Contains (link.Value.connection.EditorObj)){
 						linkColor = _selected.Settings.toLinkColor;
 					}*/
-						DrawLink(n, _allNodes.Find (x => x.guid == l.guid), l.yOffset, linkColor);
+
+					DrawLink(n, _allNodes.Find (x => x.guid == l.guid), l.yOffset, linkColor);
 				}
 			}
 
@@ -403,7 +456,7 @@ namespace AnyGraph{
 				else{
 					Color linkColor = _selected.Settings.baseLinkColor;
 					Vector3 nodePos = new Vector3(_nodeToLink.EditorPos.x + _nodeToLink.EditorPos.width, _nodeToLink.EditorPos.y);
-					DrawLink (nodePos, new Vector3(Event.current.mousePosition.x, Event.current.mousePosition.y, 0), 0, linkColor);
+					DrawLink (nodePos, new Vector3(Event.current.mousePosition.x, Event.current.mousePosition.y, 0), linkColor);
 				}
 			}
 		}
@@ -414,6 +467,7 @@ namespace AnyGraph{
 		private void DrawNodes(){
 			BeginWindows ();
 	
+			_allNodePos = new List<Rect>();
 			foreach(Node n in _allNodes){
 				DrawNode (n);
 			}
@@ -454,6 +508,9 @@ namespace AnyGraph{
 			}
 
 			// Draw node.
+			if(node.representedNode == null){
+				return;
+			}
 			node.nodePos = GUILayout.Window (_allNodes.FindIndex (x => x.Equals(node)), node.nodePos, delegate{
 				bool repaint = false;
 				Rect edPos = node.nodePos;
@@ -470,10 +527,14 @@ namespace AnyGraph{
 
 				for(int i = 0; i < node.links.Count; i++){
 					GUILayout.Label (node.links[i].linkName);
-					Link temp = node.links[i];
-					temp.yOffset = GUILayoutUtility.GetLastRect ().y + (GUILayoutUtility.GetLastRect ().height / 2);
-					node.links[i] = temp;
+					//Link temp = node.links[i];
+					Rect lastRect = GUILayoutUtility.GetLastRect ();
+					//temp.yOffset = lastRect.y + (lastRect.height / 2);
+					//node.links[i] = temp;
+					if(lastRect.y + (lastRect.height / 2) > 1){
+						node.links[i].SetOffset (lastRect.y + (lastRect.height / 2));
 					}
+				}
 
 				if(repaint){
 					Repaint();
@@ -498,7 +559,7 @@ namespace AnyGraph{
 
 			Vector3 startPos = new Vector3(start.x + start.width, start.y + yOffset, 0);
 			Vector3 endPos = new Vector3(end.x, end.y + (end.height / 2), 0);
-			DrawLink (startPos, endPos, yOffset, linkColor);
+			DrawLink (startPos, endPos, linkColor);
 		}
 
 		/// <summary>
@@ -508,7 +569,7 @@ namespace AnyGraph{
 		/// <param name="endPos">End position.</param>
 		/// <param name="yOffset">Y offset in the node.</param>
 		/// <param name="linkColor">Link color.</param>
-		private void DrawLink(Vector3 startPos, Vector3 endPos, float yOffset, Color linkColor){
+		private void DrawLink(Vector3 startPos, Vector3 endPos, Color linkColor){
 			Vector3[] points;
 			Vector3[] tangents;
 			
@@ -603,9 +664,10 @@ namespace AnyGraph{
 				case EventType.MouseUp:{
 					if (GUIUtility.hotControl == controlID){
 						foreach (Node node in _selection){
-							EditorUtility.SetDirty (node.representedNode.EditorObj);
+							EditorUtility.SetDirty (_selected as UnityEngine.Object);
 						}
 						this._initialDragNodePosition.Clear ();
+						_graphExtents = GetGraphExtents ();
 						GUIUtility.hotControl = 0;
 					}
 					break;
@@ -952,27 +1014,25 @@ namespace AnyGraph{
 				}
 			}
 
-			// Old code follows.
-
-			_selected.Nodes = _grabbedNodes;
-
 			List<List<Node>> allNodeLevels = new List<List<Node>>();
 			List<Node> rootNodes = new List<Node>();
 			rootNodes.AddRange (_allNodes.Where(x => x.isRoot));
 			allNodeLevels.Add (rootNodes);
 
-			int levelCount = 0;
 			while(true){
 				List<Node> newLevel = new List<Node>();
-				for(int i = 0; i < allNodeLevels[levelCount].Count; i++){
-					for(int l = 0; l < allNodeLevels[levelCount][i].links.Count; l++){
-						newLevel.Add (_allNodes.Find (x => x.guid == allNodeLevels[levelCount][i].links[i].guid));
+				for(int i = 0; i < allNodeLevels.Last ().Count; i++){
+					for(int l = 0; l < allNodeLevels.Last ()[i].links.Count; l++){
+						if(!string.IsNullOrEmpty(allNodeLevels.Last()[i].links[l].guid)){
+							newLevel.Add (_allNodes.Find (x => x.guid == allNodeLevels.Last()[i].links[l].guid));
+						}
 					}
 				}
-
+				
 				if(newLevel.Count == 0){
 					break;
 				}
+				allNodeLevels.Add (newLevel);
 			}
 
 			List<Rect> levelRects = new List<Rect>();
@@ -1000,6 +1060,8 @@ namespace AnyGraph{
 				
 				nodeX += levelRects[i].width + xSpacing;
 			}
+
+			_graphExtents = GetGraphExtents();
 		}
 		
 		[System.Serializable]
@@ -1012,21 +1074,31 @@ namespace AnyGraph{
 
 			public List<Node> SetupRecursively(){
 				List<Node> linked = new List<Node>();
+				if(representedNode == null){
+					return linked;
+				}
 				foreach(AnyGraphLink link in representedNode.ConnectedNodes){
-					Node newNode = new Node(){
-						representedNode = link.connection,
-						isRoot = false,
-						guid = new System.Guid().ToString (),
-						links = new List<Link>(),
-						nodePos = new Rect()
-					};
-					links.Add (new Link(){
-						linkName = link.linkText,
-						guid = newNode.guid
-					});
+					if(link.connection != null){
+						Node newNode = new Node(){
+							representedNode = link.connection,
+							isRoot = false,
+							guid = System.Guid.NewGuid ().ToString (),
+							links = new List<Link>(),
+							nodePos = new Rect()
+						};
+						links.Add (new Link(){
+							linkName = link.linkText,
+							guid = newNode.guid
+						});
+						linked.Add (newNode);
+						linked.AddRange (newNode.SetupRecursively ());
+					}
+					else{
+						links.Add (new Link(){
+							linkName = link.linkText
+						});
+					}
 
-					linked.Add (newNode);
-					linked.AddRange (newNode.SetupRecursively ());
 				}
 
 				return linked;
@@ -1034,10 +1106,14 @@ namespace AnyGraph{
 		}
 
 		[System.Serializable]
-		private struct Link{
+		private class Link{
 			public string linkName;
 			public string guid;
 			public float yOffset;
+
+			public void SetOffset(float newOffset){
+				yOffset = newOffset;
+			}
 		}
 	}
 	
