@@ -2,6 +2,7 @@ using UnityEngine;
 using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
+using AnyGraph;
 
 /// <summary>
 /// Interface to attach on a class to make it graphable.

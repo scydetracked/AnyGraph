@@ -1,5 +1,6 @@
 ﻿using System.Linq;
 using System.Collections.Generic;
+using AnyGraph;
 
 public static class AnyGraphNodeExt {
 	public static bool IsNodeRedundant(this IAnyGraphNode currentNode, IAnyGraphNode node, List<IAnyGraphNode> scanned){

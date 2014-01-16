@@ -7,7 +7,7 @@ public class AnyGraphInspector : Editor {
 	public override void OnInspectorGUI (){
 		if(target is IAnyGraphable){
 			if(GUILayout.Button ("View In AnyGraph")){
-				EditorWindow.GetWindow<AnyGraph>();
+				EditorWindow.GetWindow<AnyGraph.AnyGraph>();
 			}
 		}
 		//base.OnInspectorGUI ();
