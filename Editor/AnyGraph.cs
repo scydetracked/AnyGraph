@@ -129,9 +129,9 @@ namespace AnyGraph{
 			foreach(IAnyGraphNode root in rootNodes){
 				Node newNode = new Node(){
 					representedNode = root,
+					isRoot = true,
 					guid = new System.Guid().ToString (),
 					links = new List<Link>(),
-					nodeLevel = 0,
 					nodePos = new Rect()
 				};
 
@@ -193,9 +193,9 @@ namespace AnyGraph{
 				_selected.Settings = new AnyGraphSettings();
 			}
 			
-			/*if(_selected.Settings.autoTreePlacement){
+			if(_selected.Settings.autoTreePlacement){
 				RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
-			}*/
+			}
 
 			Rect scrollViewRect = EditorZoomArea.Begin (_zoom, new Rect(0, 0, position.width - _optionWindowRect.width, position.height));
 			scrollViewRect.y -= 21;
@@ -240,9 +240,9 @@ namespace AnyGraph{
 			else{
 				_optionWindowScrollPos = GUILayout.BeginScrollView(_optionWindowScrollPos, GUILayout.MaxHeight (_optionWindowRect.height - 20));
 
-				/*if(!_selected.Settings.autoTreePlacement && GUILayout.Button ("Structure")){
+				if(!_selected.Settings.autoTreePlacement && GUILayout.Button ("Structure")){
 					RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
-				}*/
+				}
 
 				// Buttons for manual linking/unlinking.
 				if(_selected.Settings.allowNodeLinking && _selection.Count == 2){
@@ -928,11 +928,15 @@ namespace AnyGraph{
 		/// <param name="xSpacing">X spacing.</param>
 		/// <param name="ySpacing">Y spacing.</param>
 		private void RearrangeNodesAsTree(float xSpacing, float ySpacing, bool duplicateBranches = false){
-			for(int i = 0; i < _grabbedNodes.Count; i++){
-				if(_grabbedNodes[i] != null && _grabbedNodes[i].IsNodeRedundant()){
-					while(_grabbedNodes[i].IsNodeRedundant()){
+			for(int i = 0; i < _allNodes.Count; i++){
+				if(_allNodes[i] != null && _allNodes[i].representedNode.IsNodeRedundant()){
+					Debug.LogWarning ("There is a redundancy in the graph. Aborting tree graphing.");
+					// TODO: Implement new aliasing system to only alias redundant nodes.
+					return;
+					/*
+					while(_allNodes[i].representedNode.IsNodeRedundant()){
 
-						IAnyGraphNode instigator = _grabbedNodes[i].GetRedundancyInstigator ();
+						IAnyGraphNode instigator = _allNodes[i].representedNode.GetRedundancyInstigator ();
 						if(instigator == null){
 							break;
 						}
@@ -944,88 +948,41 @@ namespace AnyGraph{
 
 						instigator.ConnectedNodes[instigator.ConnectedNodes.FindIndex(x => x.connection == _grabbedNodes[i])] = aliasedLink;
 					}
+					*/
 				}
 			}
+
+			// Old code follows.
 
 			_selected.Nodes = _grabbedNodes;
 
-			List<List<IAnyGraphNode>> allNodeLevels = new List<List<IAnyGraphNode>>();
-			List<IAnyGraphNode> nonRootNodes = new List<IAnyGraphNode>();
-			List<IAnyGraphNode> rootNodes = new List<IAnyGraphNode>();
-			rootNodes.AddRange(_selected.Nodes);
-			foreach(IAnyGraphNode node in _selected.Nodes){
-				foreach(IAnyGraphNode connection in node.ConnectedNodes.Select (x => x.connection)){
-					if(rootNodes.Contains(connection)){
-						nonRootNodes.Add (connection);
-						rootNodes.Remove (connection);
-					}
-				}
-			}
-			
+			List<List<Node>> allNodeLevels = new List<List<Node>>();
+			List<Node> rootNodes = new List<Node>();
+			rootNodes.AddRange (_allNodes.Where(x => x.isRoot));
 			allNodeLevels.Add (rootNodes);
+
 			int levelCount = 0;
-
-			if(!duplicateBranches){
-				while(nonRootNodes.Count > 0){
-					List<IAnyGraphNode> newLevel = new List<IAnyGraphNode>();
-					foreach(IAnyGraphNode prevNode in allNodeLevels[levelCount]){
-						foreach(IAnyGraphNode connectedNode in prevNode.ConnectedNodes.Where (x => x.connection != null).Select (x => x.connection)){
-							if(!newLevel.Contains (connectedNode)){
-								newLevel.Add (connectedNode);
-							}
-						}
+			while(true){
+				List<Node> newLevel = new List<Node>();
+				for(int i = 0; i < allNodeLevels[levelCount].Count; i++){
+					for(int l = 0; l < allNodeLevels[levelCount][i].links.Count; l++){
+						newLevel.Add (_allNodes.Find (x => x.guid == allNodeLevels[levelCount][i].links[i].guid));
 					}
-
-					foreach(List<IAnyGraphNode> prevLevel in allNodeLevels){
-						foreach(IAnyGraphNode current in newLevel){
-							prevLevel.Remove (current);
-							nonRootNodes.Remove (current);
-						}
-					}
-
-					allNodeLevels.Add (newLevel);
-					levelCount++;
 				}
 
-				//Last level check
-				while(true){
-					List<IAnyGraphNode> nodesToMove = new List<IAnyGraphNode>();
-					foreach(IAnyGraphNode node in allNodeLevels.Last ()){
-						foreach(IAnyGraphNode otherNode in allNodeLevels.Last ().Where (x => !x.Equals (node))){
-							if(!nodesToMove.Contains (node) && otherNode.ConnectedNodes.Select (x => x.connection).Contains (node)){
-								nodesToMove.Add (node);
-							}
-						}
-					}
-
-					if(nodesToMove.Count <= 0){
-						break;
-					}
-
-					foreach(IAnyGraphNode toMove in nodesToMove){
-						allNodeLevels.Last ().Remove (toMove);
-					}
-					allNodeLevels.Add (nodesToMove);
-				}
-			}
-			else{
-				while(true){
-					for(int i = 0; i < allNodeLevels[levelCount].Count; i++){
-						for(int l = 0; l < allNodeLevels[levelCount][i].ConnectedNodes.Count; l++){
-							IAnyGraphNode node = allNodeLevels[levelCount][i].ConnectedNodes[l].connection;
-						}
-					}
+				if(newLevel.Count == 0){
+					break;
 				}
 			}
 
 			List<Rect> levelRects = new List<Rect>();
-			foreach(List<IAnyGraphNode> level in allNodeLevels){
+			foreach(List<Node> level in allNodeLevels){
 				Rect levRect = new Rect(0, 0, 0, 0);
-				foreach(IAnyGraphNode node in level){
-					if(levRect.width < node.EditorPos.width)
-						levRect.width = node.EditorPos.width;
+				foreach(Node node in level){
+					if(levRect.width < node.nodePos.width)
+						levRect.width = node.nodePos.width;
 					
-					levRect.height += node.EditorPos.height;
+					levRect.height += node.nodePos.height;
 				}
 				levRect.height += (level.Count - 1) * ySpacing;
 				
@@ -1036,9 +993,9 @@ namespace AnyGraph{
 			for(int i = 0; i < levelRects.Count; i++){
 				float nodeY = (position.height / 2) - (levelRects[i].height / 2);
 				
-				foreach(IAnyGraphNode node in allNodeLevels[i]){
-					node.EditorPos = new Rect(nodeX, nodeY, node.EditorPos.width, node.EditorPos.height);
-					nodeY += node.EditorPos.height + ySpacing;
+				foreach(Node node in allNodeLevels[i]){
+					node.nodePos = new Rect(nodeX, nodeY, node.nodePos.width, node.nodePos.height);
+					nodeY += node.nodePos.height + ySpacing;
 				}
 				
 				nodeX += levelRects[i].width + xSpacing;
@@ -1048,9 +1005,9 @@ namespace AnyGraph{
 		[System.Serializable]
 		private class Node{
 			public IAnyGraphNode representedNode;
+			public bool isRoot;
 			public string guid;
 			public List<Link> links;
-			public int nodeLevel;
 			public Rect nodePos;
 
 			public List<Node> SetupRecursively(){
@@ -1058,9 +1015,9 @@ namespace AnyGraph{
 				foreach(AnyGraphLink link in representedNode.ConnectedNodes){
 					Node newNode = new Node(){
 						representedNode = link.connection,
+						isRoot = false,
 						guid = new System.Guid().ToString (),
 						links = new List<Link>(),
-						nodeLevel = 0,
 						nodePos = new Rect()
 					};
 					links.Add (new Link(){
