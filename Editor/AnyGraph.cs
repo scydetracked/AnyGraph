@@ -47,6 +47,8 @@ namespace AnyGraph{
 		private List<Node> _selection = new List<Node>();
 		private List<Node> _oldSelection = new List<Node>();
 
+		private bool _needRearrange = false;
+
 		[MenuItem("Window/AnyGraph")]
 		public static void Openwindow(){
 			AnyGraph window = EditorWindow.GetWindow<AnyGraph>("Any Graph", true);
@@ -93,21 +95,7 @@ namespace AnyGraph{
 			_allNodes = new List<Node>();
 			_selection = new List<Node>();
 			_oldSelection = new List<Node>();
-			////
-/*
-			_selection = new List<Node>();
-			_oldSelection = new List<Node>();
-			_nodeDragDistance = new Vector2();
-			_initMousePos = new Vector2();
-			scrollPos = new Vector2();
-			_graphExtents = new Rect();
-			_lastGraphExtents = new Rect();
-			_initialDragNodePosition = new Dictionary<Node, Rect>();
-			_selected = null;
-			_aliases = new List<AnyGraphAliasNode>();
-			_cachedNodes = new List<IAnyGraphNode>();
-			_allNodePos = new List<Rect>();
-*/
+
 			System.GC.Collect ();
 		}
 
@@ -176,6 +164,8 @@ namespace AnyGraph{
 				_allNodes.Add (newNode);
 				_allNodes.AddRange (newNode.SetupRecursively ());
 			}
+
+			_needRearrange = true;
 
 			Debug.Log ("Complete node map was generated.");
 		}
@@ -247,17 +237,19 @@ namespace AnyGraph{
 			if(_selected.Settings == null){
 				_selected.Settings = new AnyGraphSettings();
 			}
-			
-			/*if(_selected.Settings.autoTreePlacement){
-				RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
-			}*/
+
+			if(_selected.Nodes != _cachedNodes){
+				GenerateCompleteNodeMap (_selected.Nodes);
+			}
+
+			CheckNodeLinks ();
 
 			Rect scrollViewRect = EditorZoomArea.Begin (_zoom, new Rect(0, 0, position.width - _optionWindowRect.width, position.height));
 			scrollViewRect.y -= 21;
 			scrollPos = GUI.BeginScrollView (scrollViewRect, scrollPos, _graphExtents, GUIStyle.none, GUIStyle.none);
 
 			DrawLinks ();
-			DrawNodes();
+			DrawNodes ();
 
 			DragSelection(new Rect(-5000f, -5000f, 10000f, 10000f));
 
@@ -266,6 +258,10 @@ namespace AnyGraph{
 
 			GUI.EndScrollView();
 			EditorZoomArea.End ();
+
+			if(_needRearrange){
+				RearrangeNodesAsTree(_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y, true);
+			}
 
 			// Options window.
 			if(DrawOptionsWindow()){
@@ -431,19 +427,19 @@ namespace AnyGraph{
 			foreach(Node n in _allNodes){
 				foreach(Link l in n.links){
 					if(string.IsNullOrEmpty(l.guid)){
-						return;
+						continue;
 					}
 					Color linkColor = _selected.Settings.baseLinkColor;
-					/*if(_selected.Settings.colorFromSelected && _selection.Contains (link.Key.EditorObj) &&
-				   _selected.Settings.colorToSelected && _selection.Contains (link.Value.connection.EditorObj)){
-					linkColor = _selected.Settings.selectedLinkColor;
+					if(_selected.Settings.colorFromSelected && _selection.Find (x => x.links.Contains (l)) != null &&
+					   _selected.Settings.colorToSelected && _selection.Select (x => x.guid).Contains (l.guid)){
+						linkColor = _selected.Settings.selectedLinkColor;
 					}
-					else if(_selected.Settings.colorFromSelected && _selection.Contains (link.Key.EditorObj)){
+					else if(_selected.Settings.colorFromSelected && _selection.Find (x => x.links.Contains (l)) != null){
 						linkColor = _selected.Settings.fromLinkColor;
 					}
-					else if(_selected.Settings.colorToSelected && _selection.Contains (link.Value.connection.EditorObj)){
+					else if(_selected.Settings.colorToSelected && _selection.Select (x => x.guid).Contains (l.guid)){
 						linkColor = _selected.Settings.toLinkColor;
-					}*/
+					}
 
 					DrawLink(n, _allNodes.Find (x => x.guid == l.guid), l.yOffset, linkColor);
 				}
@@ -495,7 +491,7 @@ namespace AnyGraph{
 			// Color if the node is coming from the selected node.
 			if(_selected.Settings.colorFromSelected){
 				foreach(Node selectedNode in _selection){
-					if(node.links.Select (x => x.guid).Contains (node.guid)){
+					if(selectedNode.links.Select (x => x.guid).Contains (node.guid)){
 						nodeColor = (UnityEditor.Graphs.Styles.Color)(int)_selected.Settings.fromNodeColor;
 						break;
 					}
@@ -984,19 +980,48 @@ namespace AnyGraph{
 			}
 		}
 
+		// TODO: Finish implementing a method of adding new nodes and links to the nodemap.
+		private void UpdateNodes(){
+			if(_selected == null){
+				return;
+			}
+			List<IAnyGraphNode> nodes = _selected.Nodes;
+			foreach(IAnyGraphNode node in nodes){
+				if(!_allNodes.Select (x => x.representedNode).Contains(node)){
+					Node newNode = new Node(){
+						representedNode = node,
+						isRoot = false,
+						guid = System.Guid.NewGuid ().ToString (),
+						links = new List<Link>(),
+						nodePos = new Rect()
+					};
+				}
+			}
+		}
+
+		private void CheckNodeLinks(){
+			foreach(Node n in _allNodes){
+				if(n.representedNode.ConnectedNodes.Count != n.links.Count){
+					GenerateCompleteNodeMap (_selected.Nodes);
+					return;
+				}
+			}
+		}
+
 		/// <summary>
 		/// Rearranges the nodes as tree.
 		/// </summary>
 		/// <param name="xSpacing">X spacing.</param>
 		/// <param name="ySpacing">Y spacing.</param>
 		private void RearrangeNodesAsTree(float xSpacing, float ySpacing, bool duplicateBranches = false){
+			_needRearrange = false;
 			for(int i = 0; i < _allNodes.Count; i++){
 				if(_allNodes[i] != null && _allNodes[i].representedNode.IsNodeRedundant()){
 					Debug.LogWarning ("There is a redundancy in the graph. Aborting tree graphing.");
 					// TODO: Implement new aliasing system to only alias redundant nodes.
 					return;
-					/*
-					while(_allNodes[i].representedNode.IsNodeRedundant()){
+
+					/*while(_allNodes[i].representedNode.IsNodeRedundant()){
 
 						IAnyGraphNode instigator = _allNodes[i].representedNode.GetRedundancyInstigator ();
 						if(instigator == null){
@@ -1009,8 +1034,7 @@ namespace AnyGraph{
 						_grabbedNodes.Add (aliasedLink.connection);
 
 						instigator.ConnectedNodes[instigator.ConnectedNodes.FindIndex(x => x.connection == _grabbedNodes[i])] = aliasedLink;
-					}
-					*/
+					}*/
 				}
 			}
 
