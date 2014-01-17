@@ -47,6 +47,8 @@ namespace AnyGraph{
 		private List<Node> _selection = new List<Node>();
 		private List<Node> _oldSelection = new List<Node>();
 
+		private int _updateThrottler = 0;
+
 		private bool _needRearrange = false;
 
 		[MenuItem("Window/AnyGraph")]
@@ -75,11 +77,9 @@ namespace AnyGraph{
 			_lastGraphExtents = new Rect();
 			_dragStartPoint = new Vector2();
 			_dragType = SelectionDragType.None;
-			
-			_optionWindowOpen = false;
+
 			_optionWindowRect = new Rect();
 			_optionWindowScrollPos = new Vector2();
-			_showOptionsGraphSettings = false;
 			
 			
 			// Non anygraph specific.
@@ -138,7 +138,12 @@ namespace AnyGraph{
 			}
 		}
 
-		private void Update(){Repaint ();}
+		private void Update(){
+			if(_updateThrottler%4 == 0){
+				Repaint ();
+			}
+			_updateThrottler = _updateThrottler++%10000;
+		}
 
 		private void GenerateCompleteNodeMap(List<IAnyGraphNode> nodes){
 			_cachedNodes = nodes;
@@ -287,6 +292,12 @@ namespace AnyGraph{
 
 				if(!_selected.Settings.autoTreePlacement && GUILayout.Button ("Structure")){
 					RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
+				}
+
+				if(GUILayout.Button ("Force Refresh")){
+					Reset ();
+					return false;
+					//GenerateCompleteNodeMap (_selected.Nodes);
 				}
 
 				// Buttons for manual linking/unlinking.
@@ -507,11 +518,9 @@ namespace AnyGraph{
 			if(node.representedNode == null){
 				return;
 			}
+
 			node.nodePos = GUILayout.Window (_allNodes.FindIndex (x => x.Equals(node)), node.nodePos, delegate{
-				bool repaint = false;
-				Rect edPos = node.nodePos;
-				edPos.width = Mathf.Max (node.nodePos.width, GUILayoutUtility.GetRect (new GUIContent(node.representedNode.Name), "Label").width);
-				node.nodePos = edPos;
+				float width = GUILayoutUtility.GetRect (new GUIContent(node.representedNode.Name), "Label").width;
 				SelectNode (node);
 
 				if(_selected.Settings.allowNodeLinking && GUILayout.Button ("Link To...")){
@@ -519,7 +528,7 @@ namespace AnyGraph{
 					_linkingNode = true;
 				}
 
-				repaint = _selected.DrawNode (node.representedNode);
+				bool repaint = _selected.DrawNode (node.representedNode);
 
 				for(int i = 0; i < node.links.Count; i++){
 					GUILayout.Label (node.links[i].linkName);
@@ -527,6 +536,9 @@ namespace AnyGraph{
 					Rect lastRect = GUILayoutUtility.GetLastRect ();
 					//temp.yOffset = lastRect.y + (lastRect.height / 2);
 					//node.links[i] = temp;
+					if(lastRect.width > width){
+						width = lastRect.width;
+					}
 					if(lastRect.y + (lastRect.height / 2) > 1){
 						node.links[i].SetOffset (lastRect.y + (lastRect.height / 2));
 					}
@@ -535,10 +547,11 @@ namespace AnyGraph{
 				if(repaint){
 					Repaint();
 				}
-				
+
 				DragNodes ();
 			},
 			node.representedNode.Name, UnityEditor.Graphs.Styles.GetNodeStyle ("node", nodeColor, _selection.Contains (node)));
+
 			_allNodePos.Add (node.nodePos);
 		}
 
@@ -568,9 +581,14 @@ namespace AnyGraph{
 		private void DrawLink(Vector3 startPos, Vector3 endPos, Color linkColor){
 			Vector3[] points;
 			Vector3[] tangents;
-			
-			GetCurvyConnectorValues (startPos, endPos, out points, out tangents);
-	        Handles.DrawBezier(points[0], points[1], tangents[0], tangents[1], linkColor, (Texture2D)UnityEditor.Graphs.Styles.connectionTexture.image, _selected.Settings.linkWidth);
+
+			if(_selected.Settings.useCurvedConnectors){
+				GetCurvyConnectorValues (startPos, endPos, out points, out tangents);
+		        Handles.DrawBezier(points[0], points[1], tangents[0], tangents[1], linkColor, (Texture2D)UnityEditor.Graphs.Styles.connectionTexture.image, _selected.Settings.linkWidth);
+			}
+			else{
+				Handles.DrawBezier (startPos, endPos, endPos, startPos, linkColor, (Texture2D)UnityEditor.Graphs.Styles.connectionTexture.image, _selected.Settings.linkWidth);
+			}
 			
 			
 			// Good for connecting where direction is unimportant. But need a solution to show direction.
@@ -588,6 +606,9 @@ namespace AnyGraph{
 		/// <param name="n">Node.</param>
 		private void SelectNode(Node n){
 			Event current = Event.current;
+			if(current.alt){
+				return;
+			}
 			if (current.type == EventType.MouseDown && current.button == 0){
 				if(_linkingNode){
 					if(n.representedNode != _nodeToLink){
@@ -644,6 +665,9 @@ namespace AnyGraph{
 		private void DragNodes(){
 			Event current = Event.current;
 			int controlID = GUIUtility.GetControlID (FocusType.Passive);
+			if(current.alt){
+				return;
+			}
 			switch (current.GetTypeForControl (controlID)){
 				case EventType.MouseDown:{
 					if (current.button == 0){
@@ -770,6 +794,9 @@ namespace AnyGraph{
 					GUIUtility.hotControl = 0;
 					_oldSelection.Clear ();
 					this.UpdateUnitySelection ();
+					if(Selection.objects.Length == 0){
+						Selection.objects = new Object[1]{(_selected as MonoBehaviour).gameObject};
+					}
 					_dragType = SelectionDragType.None;
 					current.Use ();
 				}
