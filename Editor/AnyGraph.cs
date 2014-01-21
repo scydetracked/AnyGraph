@@ -9,8 +9,9 @@ namespace AnyGraph{
 		private enum SelectionDragType{
 			None,
 			Rect,
-			pick
+			pick,
 		}
+
 		private const float kZoomMin = 0.1f;
 		private const float kZoomMax = 1f;
 		
@@ -39,11 +40,11 @@ namespace AnyGraph{
 		private List<IAnyGraphNode> _cachedNodes = new List<IAnyGraphNode>();
 		private IAnyGraphable _selected = null;
 		private bool _linkingNode = false;
-		private IAnyGraphNode _nodeToLink = null;
+		private Node _nodeToLink = null;
 		private List<AnyGraphAliasNode> _aliases = new List<AnyGraphAliasNode>();
 
 		// New Node & Link systems
-		private List<Node> _allNodes = new List<Node>();
+		private static List<Node> _allNodes = new List<Node>();
 		private List<Node> _selection = new List<Node>();
 		private List<Node> _oldSelection = new List<Node>();
 
@@ -163,7 +164,7 @@ namespace AnyGraph{
 					isRoot = true,
 					guid = System.Guid.NewGuid ().ToString (),
 					links = new List<Link>(),
-					nodePos = new Rect()
+					nodePos = new Rect(),
 				};
 
 				_allNodes.Add (newNode);
@@ -290,7 +291,7 @@ namespace AnyGraph{
 			else{
 				_optionWindowScrollPos = GUILayout.BeginScrollView(_optionWindowScrollPos, GUILayout.MaxHeight (_optionWindowRect.height - 20));
 
-				if(!_selected.Settings.autoTreePlacement && GUILayout.Button ("Structure")){
+				if(GUILayout.Button ("Structure")){
 					RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
 				}
 
@@ -334,7 +335,7 @@ namespace AnyGraph{
 				if(_showOptionsGraphSettings){
 					EditorGUI.indentLevel++;
 					_selected.Settings.nodePlacementOffset = EditorGUILayout.Vector2Field ("Auto-Placement Offset", _selected.Settings.nodePlacementOffset);
-					_selected.Settings.autoTreePlacement = EditorGUILayout.Toggle ("Auto Graph Restructuring", _selected.Settings.autoTreePlacement);
+					_selected.Settings.structuringMode = (AnyGraphSettings.GraphOrganizingMode)EditorGUILayout.EnumPopup ("Placement Type", _selected.Settings.structuringMode);
 					_selected.Settings.allowNodeLinking = EditorGUILayout.Toggle ("Allow Node Linking", _selected.Settings.allowNodeLinking);
 					_selected.Settings.drawLinkOnTop = EditorGUILayout.Toggle ("Draw Links On Top", _selected.Settings.drawLinkOnTop);
 					_selected.Settings.linkWidth = EditorGUILayout.FloatField ("Link Width", _selected.Settings.linkWidth);
@@ -462,7 +463,7 @@ namespace AnyGraph{
 				}
 				else{
 					Color linkColor = _selected.Settings.baseLinkColor;
-					Vector3 nodePos = new Vector3(_nodeToLink.EditorPos.x + _nodeToLink.EditorPos.width, _nodeToLink.EditorPos.y);
+					Vector3 nodePos = new Vector3(_nodeToLink.nodePos.x + _nodeToLink.nodePos.width, _nodeToLink.nodePos.y);
 					DrawLink (nodePos, new Vector3(Event.current.mousePosition.x, Event.current.mousePosition.y, 0), linkColor);
 				}
 			}
@@ -524,7 +525,7 @@ namespace AnyGraph{
 				SelectNode (node);
 
 				if(_selected.Settings.allowNodeLinking && GUILayout.Button ("Link To...")){
-					_nodeToLink = node.representedNode;
+					_nodeToLink = node;
 					_linkingNode = true;
 				}
 
@@ -612,7 +613,7 @@ namespace AnyGraph{
 			if (current.type == EventType.MouseDown && current.button == 0){
 				if(_linkingNode){
 					if(n.representedNode != _nodeToLink){
-						_selected.ConnectNodes (_nodeToLink.EditorObj, n.representedNode.EditorObj);
+						_selected.ConnectNodes (_nodeToLink.representedNode.EditorObj, n.representedNode.EditorObj);
 						_nodeToLink = null;
 						_linkingNode = false;
 						Repaint ();
@@ -1068,6 +1069,11 @@ namespace AnyGraph{
 			List<List<Node>> allNodeLevels = new List<List<Node>>();
 			List<Node> rootNodes = new List<Node>();
 			rootNodes.AddRange (_allNodes.Where(x => x.isRoot));
+
+			for(int i = 0; i < rootNodes.Count; i++){
+				rootNodes[i].UpdateChildBlocks(_selected.Settings.nodePlacementOffset.y);
+			}
+
 			allNodeLevels.Add (rootNodes);
 
 			while(true){
@@ -1086,32 +1092,49 @@ namespace AnyGraph{
 				allNodeLevels.Add (newLevel);
 			}
 
-			List<Rect> levelRects = new List<Rect>();
-			foreach(List<Node> level in allNodeLevels){
-				Rect levRect = new Rect(0, 0, 0, 0);
-				foreach(Node node in level){
-					if(levRect.width < node.nodePos.width)
-						levRect.width = node.nodePos.width;
-					
-					levRect.height += node.nodePos.height;
+			if(_selected.Settings.structuringMode == AnyGraphSettings.GraphOrganizingMode.SpreadOut){
+				float[] xOffset = new float[allNodeLevels.Count];
+				float totOffset = 0;
+				for(int i = 0; i < allNodeLevels.Count - 1; i++){
+					for(int j = 0; j < allNodeLevels[i+1].Count; j++){
+						xOffset[i+1] = Mathf.Max (allNodeLevels[i+1][j].nodePos.width, xOffset[i+1]);
+					}
+					xOffset[i+1] += _selected.Settings.nodePlacementOffset.x + totOffset;
+					totOffset = xOffset[i+1];
 				}
-				levRect.height += (level.Count - 1) * ySpacing;
-				
-				levelRects.Add (levRect);
-			}
-			
-			float nodeX = 0;
-			for(int i = 0; i < levelRects.Count; i++){
-				float nodeY = (position.height / 2) - (levelRects[i].height / 2);
-				
-				foreach(Node node in allNodeLevels[i]){
-					node.nodePos = new Rect(nodeX, nodeY, node.nodePos.width, node.nodePos.height);
-					nodeY += node.nodePos.height + ySpacing;
-				}
-				
-				nodeX += levelRects[i].width + xSpacing;
-			}
 
+				foreach(Node n in rootNodes){
+					n.nodePos = new Rect(0, 0, n.nodePos.width, n.nodePos.height);
+					n.RecursiveSetPosition (1, xOffset);
+				}
+			}
+			else if(_selected.Settings.structuringMode == AnyGraphSettings.GraphOrganizingMode.Pack){
+				List<Rect> levelRects = new List<Rect>();
+				foreach(List<Node> level in allNodeLevels){
+					Rect levRect = new Rect(0, 0, 0, 0);
+					foreach(Node node in level){
+						if(levRect.width < node.nodePos.width)
+							levRect.width = node.nodePos.width;
+						
+						levRect.height += node.nodePos.height;
+					}
+					levRect.height += (level.Count - 1) * ySpacing;
+					
+					levelRects.Add (levRect);
+				}
+
+				float nodeX = 0;
+				for(int i = 0; i < levelRects.Count; i++){
+					float nodeY = (position.height / 2) - (levelRects[i].height / 2);
+					
+					foreach(Node node in allNodeLevels[i]){
+						node.nodePos = new Rect(nodeX, nodeY, node.nodePos.width, node.nodePos.height);
+						nodeY += node.nodePos.height + ySpacing;
+					}
+					
+					nodeX += levelRects[i].width + xSpacing;
+				}
+			}
 			_graphExtents = GetGraphExtents();
 		}
 		
@@ -1122,6 +1145,8 @@ namespace AnyGraph{
 			public string guid;
 			public List<Link> links;
 			public Rect nodePos;
+			public float heightExtent {get; private set;}
+			public Node parentNode;
 
 			public List<Node> SetupRecursively(){
 				List<Node> linked = new List<Node>();
@@ -1135,7 +1160,8 @@ namespace AnyGraph{
 							isRoot = false,
 							guid = System.Guid.NewGuid ().ToString (),
 							links = new List<Link>(),
-							nodePos = new Rect()
+							nodePos = new Rect(),
+							parentNode = this,
 						};
 						links.Add (new Link(){
 							linkName = link.linkText,
@@ -1154,6 +1180,35 @@ namespace AnyGraph{
 
 				return linked;
 			}
+
+			public void UpdateChildBlocks(float yStep){
+				int extentCount = 0;
+				heightExtent = 0;
+				foreach(Link l in links.Where (x => x.TargetNode != null)){
+					l.TargetNode.UpdateChildBlocks(yStep);
+					heightExtent += l.TargetNode.heightExtent;
+					extentCount++;
+				}
+				
+				if(extentCount == 0){
+					heightExtent = nodePos.height;
+				}
+
+				heightExtent += yStep * (extentCount + 1);
+			}
+
+			public void RecursiveSetPosition(int level, float[] xOffsets){
+				float nextY = nodePos.y - (nodePos.height / 2) + heightExtent / 2;
+				for(int l = links.Count - 1; l >= 0; l--){
+					if(links[l].TargetNode == null){
+						continue;
+					}
+
+					links[l].TargetNode.nodePos = new Rect(xOffsets[level], nextY - (links[l].TargetNode.heightExtent / 2), links[l].TargetNode.nodePos.width, links[l].TargetNode.nodePos.height);
+					nextY -= links[l].TargetNode.heightExtent;
+					links[l].TargetNode.RecursiveSetPosition ((level + 1), xOffsets);
+				}
+			}
 		}
 
 		[System.Serializable]
@@ -1164,6 +1219,12 @@ namespace AnyGraph{
 
 			public void SetOffset(float newOffset){
 				yOffset = newOffset;
+			}
+
+			public Node TargetNode{
+				get{
+					return string.IsNullOrEmpty(this.guid) ? null : _allNodes.Find (x => x.guid == this.guid);
+				}
 			}
 		}
 	}

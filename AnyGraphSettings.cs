@@ -17,6 +17,11 @@ public sealed class AnyGraphSettings {
 		Red
 	}
 
+	public enum GraphOrganizingMode{
+		SpreadOut,
+		Pack,
+	}
+
 	/// <summary>
 	/// If set to true, the editor will allow connecting nodes together.
 	/// </summary>
@@ -24,6 +29,8 @@ public sealed class AnyGraphSettings {
 
 
 	public bool useCurvedConnectors = true;
+
+	public GraphOrganizingMode structuringMode = GraphOrganizingMode.Pack;
 
 	/// <summary>
 	/// The width used when drawing a link.
@@ -84,9 +91,4 @@ public sealed class AnyGraphSettings {
 	/// The offset used by the editor when repositionning nodes.
 	/// </summary>
 	public Vector2 nodePlacementOffset = new Vector2(150, 30);
-
-	/// <summary>
-	/// If set to true, the graph will automatically rearrange itself and create alias nodes.
-	/// </summary>
-	public bool autoTreePlacement = false;
 }

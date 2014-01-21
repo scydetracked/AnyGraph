@@ -15,14 +15,6 @@ public interface IAnyGraphNode {
 	string Name{get;set;}
 
 	/// <summary>
-	/// Gets or sets the serialized editor position.
-	/// </summary>
-	/// <value>
-	/// The editor position.
-	/// </value>
-	Rect EditorPos{get;set;}
-
-	/// <summary>
 	/// Gets the object to be inspected.
 	/// </summary>
 	UnityEngine.Object EditorObj{get;}

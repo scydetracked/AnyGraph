@@ -12,7 +12,6 @@ namespace AnyGraph{
 
 		public AnyGraphAliasNode(IAnyGraphNode refNode){
 			_refNode = refNode;
-			_edPos = refNode.EditorPos;
 			_edPos.height = 50;
 		}
 
