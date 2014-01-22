@@ -275,6 +275,49 @@ namespace AnyGraph{
 			}
 		}
 
+		private void DrawContextMenu(Node n){
+			GenericMenu menu = new GenericMenu();
+			if(n.Collapsed){
+				menu.AddItem (new GUIContent("Expand"), false, delegate() {
+					n.Collapsed = false;
+					RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
+				});
+			}
+			else{
+				menu.AddItem (new GUIContent("Collapse"), false, delegate() {
+					n.Collapsed = true;
+					RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
+				});
+			}
+
+			Vector2 mousePos = Event.current.mousePosition - _zoomCoordsOrigin + (_zoomCoordsOrigin * _zoom);// - new Vector2(n.nodePos.x, n.nodePos.y);
+			menu.DropDown (new Rect(mousePos.x, mousePos.y, 0, 0));
+
+			//menu.ShowAsContext ();
+		}
+
+		private void DrawContextMenu(Node[] n){
+			GenericMenu menu = new GenericMenu();
+			menu.AddItem (new GUIContent("Expand Multiple"), false, delegate() {
+				for(int i = 0; i < n.Length; i ++){
+					n[i].Collapsed = false;
+				}
+				RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
+			});
+
+			menu.AddItem (new GUIContent("Collapse Multiple"), false, delegate() {
+				for(int i = 0; i < n.Length; i++){
+					n[i].Collapsed = true;
+				}
+				RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
+			});
+			
+			Vector2 mousePos = (Event.current.mousePosition);
+			menu.DropDown (new Rect(mousePos.x, mousePos.y, 0, 0));
+
+			menu.ShowAsContext ();
+		}
+
 		#region Drawing Functions
 		/// <summary>
 		/// Draws the options window. All custom drawing from IAnyGraphable will be called in here as well.
@@ -437,6 +480,9 @@ namespace AnyGraph{
 		/// </summary>
 		private void DrawLinks(){
 			foreach(Node n in _allNodes){
+				if(n.Collapsed){
+					continue;
+				}
 				foreach(Link l in n.links){
 					if(string.IsNullOrEmpty(l.guid)){
 						continue;
@@ -477,7 +523,9 @@ namespace AnyGraph{
 	
 			_allNodePos = new List<Rect>();
 			foreach(Node n in _allNodes){
-				DrawNode (n);
+				if(n.parentNode == null || !n.parentNode.Collapsed){
+					DrawNode (n);
+				}
 			}
 
 			EndWindows ();
@@ -636,6 +684,14 @@ namespace AnyGraph{
 					HandleUtility.Repaint ();
 				}
 				this.UpdateUnitySelection ();
+			}
+			else if(current.type == EventType.MouseUp && current.button == 1){
+				if(_selection.Count > 1 && _selection.Contains (n)){
+					DrawContextMenu (_selection.ToArray ());
+				}
+				else{
+					DrawContextMenu (n);
+				}
 			}
 		}
 
@@ -1079,6 +1135,10 @@ namespace AnyGraph{
 			while(true){
 				List<Node> newLevel = new List<Node>();
 				for(int i = 0; i < allNodeLevels.Last ().Count; i++){
+					if(allNodeLevels.Last ()[i].Collapsed){
+						continue;
+					}
+
 					for(int l = 0; l < allNodeLevels.Last ()[i].links.Count; l++){
 						if(!string.IsNullOrEmpty(allNodeLevels.Last()[i].links[l].guid)){
 							newLevel.Add (_allNodes.Find (x => x.guid == allNodeLevels.Last()[i].links[l].guid));
@@ -1141,12 +1201,13 @@ namespace AnyGraph{
 		[System.Serializable]
 		private class Node{
 			public IAnyGraphNode representedNode;
-			public bool isRoot;
+			public bool isRoot = false;
 			public string guid;
 			public List<Link> links;
 			public Rect nodePos;
 			public float heightExtent {get; private set;}
 			public Node parentNode;
+			private bool _collapsed = false;
 
 			public List<Node> SetupRecursively(){
 				List<Node> linked = new List<Node>();
@@ -1184,10 +1245,13 @@ namespace AnyGraph{
 			public void UpdateChildBlocks(float yStep){
 				int extentCount = 0;
 				heightExtent = 0;
-				foreach(Link l in links.Where (x => x.TargetNode != null)){
-					l.TargetNode.UpdateChildBlocks(yStep);
-					heightExtent += l.TargetNode.heightExtent;
-					extentCount++;
+
+				if(!Collapsed){
+					foreach(Link l in links.Where (x => x.TargetNode != null)){
+						l.TargetNode.UpdateChildBlocks(yStep);
+						heightExtent += l.TargetNode.heightExtent;
+						extentCount++;
+					}
 				}
 				
 				if(extentCount == 0){
@@ -1207,6 +1271,18 @@ namespace AnyGraph{
 					links[l].TargetNode.nodePos = new Rect(xOffsets[level], nextY - (links[l].TargetNode.heightExtent / 2), links[l].TargetNode.nodePos.width, links[l].TargetNode.nodePos.height);
 					nextY -= links[l].TargetNode.heightExtent;
 					links[l].TargetNode.RecursiveSetPosition ((level + 1), xOffsets);
+				}
+			}
+
+			public bool Collapsed{
+				get{return _collapsed;}
+				set{
+					_collapsed = value;
+					for(int i = 0; i < links.Count; i++){
+						if(links[i].TargetNode != null){
+							links[i].TargetNode.Collapsed = value;
+						}
+					}
 				}
 			}
 		}
