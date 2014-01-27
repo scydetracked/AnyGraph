@@ -1,4 +1,4 @@
-﻿using System.Linq;
+using System.Linq;
 using System.Collections.Generic;
 using AnyGraph;
 
@@ -6,11 +6,11 @@ public static class AnyGraphNodeExt {
 	public static bool IsNodeRedundant(this IAnyGraphNode currentNode, IAnyGraphNode node, List<IAnyGraphNode> scanned){
 		scanned.Add (currentNode);
 
-		if(currentNode.ConnectedNodes.Count == 0){
+		if(currentNode.Links.Count == 0){
 			return false;
 		}
 
-		foreach(IAnyGraphNode current in currentNode.ConnectedNodes.Where (x => x.connection != null && !(x.connection is AnyGraphAliasNode)).Select (x => x.connection)){
+		foreach(IAnyGraphNode current in currentNode.Links.Where (x => x.connection != null && !(x.connection is AnyGraphAliasNode)).Select (x => x.connection)){
 			if(current == node){
 				return true;
 			}
@@ -35,11 +35,11 @@ public static class AnyGraphNodeExt {
 	public static IAnyGraphNode GetRedundancyInstigator(this IAnyGraphNode currentNode, IAnyGraphNode node, List<IAnyGraphNode> scanned){
 		scanned.Add (currentNode);
 		
-		if(currentNode.ConnectedNodes.Count == 0){
+		if(currentNode.Links.Count == 0){
 			return null;
 		}
 		
-		foreach(IAnyGraphNode current in currentNode.ConnectedNodes.Where (x => x.connection != null && !(x.connection is AnyGraphAliasNode)).Select (x => x.connection)){
+		foreach(IAnyGraphNode current in currentNode.Links.Where (x => x.connection != null && !(x.connection is AnyGraphAliasNode)).Select (x => x.connection)){
 			if(current == node){
 				return currentNode;
 			}

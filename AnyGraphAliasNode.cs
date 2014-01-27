@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 
 namespace AnyGraph{
@@ -41,7 +41,7 @@ namespace AnyGraph{
 			}
 		}
 
-		public System.Collections.Generic.List<AnyGraphLink> ConnectedNodes {
+		public System.Collections.Generic.List<AnyGraphLink> Links {
 			get {
 				return new System.Collections.Generic.List<AnyGraphLink>();
 			}
@@ -51,9 +51,6 @@ namespace AnyGraph{
 		public bool Active {
 			get {
 				return _refNode.Active;
-			}
-			set {
-				_refNode.Active = value;
 			}
 		}
 

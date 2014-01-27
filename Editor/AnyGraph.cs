@@ -153,7 +153,7 @@ namespace AnyGraph{
 			rootNodes.AddRange(_cachedNodes);
 
 			foreach(IAnyGraphNode n in _cachedNodes){
-				foreach(AnyGraphLink l in n.ConnectedNodes){
+				foreach(AnyGraphLink l in n.Links){
 					rootNodes.Remove (l.connection);
 				}
 			}
@@ -346,7 +346,7 @@ namespace AnyGraph{
 
 				// Buttons for manual linking/unlinking.
 				if(_selected.Settings.allowNodeLinking && _selection.Count == 2){
-					if(_selection[0].representedNode.ConnectedNodes.Select (x => x.connection).Contains (_selection[1].representedNode)){
+					if(_selection[0].representedNode.Links.Select (x => x.connection).Contains (_selection[1].representedNode)){
 						if(GUILayout.Button (string.Format("Disconnect '{0}' --X--> '{1}'", _selection[0].representedNode.Name, _selection[1].representedNode.Name))){
 							_selected.DisconnectNodes (_selection[0].representedNode.EditorObj, _selection[1].representedNode.EditorObj);
 							return true;
@@ -359,7 +359,7 @@ namespace AnyGraph{
 						}
 					}
 					
-					if(_selection[1].representedNode.ConnectedNodes.Select (x => x.connection).Contains (_selection[0].representedNode)){
+					if(_selection[1].representedNode.Links.Select (x => x.connection).Contains (_selection[0].representedNode)){
 						if(GUILayout.Button (string.Format("Disconnect '{0}' --X--> '{1}'", _selection[1].representedNode.Name, _selection[0].representedNode.Name))){
 							_selected.DisconnectNodes (_selection[1].representedNode.EditorObj, _selection[0].representedNode.EditorObj);
 							return true;
@@ -1098,7 +1098,7 @@ namespace AnyGraph{
 
 		private void CheckNodeLinks(){
 			foreach(Node n in _allNodes){
-				if(n.representedNode.ConnectedNodes.Count != n.links.Count){
+				if(n.representedNode.Links.Count != n.links.Count){
 					GenerateCompleteNodeMap (_selected.Nodes);
 					return;
 				}
@@ -1227,7 +1227,7 @@ namespace AnyGraph{
 				if(representedNode == null){
 					return linked;
 				}
-				foreach(AnyGraphLink link in representedNode.ConnectedNodes){
+				foreach(AnyGraphLink link in representedNode.Links){
 					if(link.connection != null){
 						Node newNode = new Node(){
 							representedNode = link.connection,

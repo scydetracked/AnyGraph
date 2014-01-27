@@ -22,11 +22,11 @@ public interface IAnyGraphNode {
 	/// <summary>
 	/// Gets the connected nodes to draw the links.
 	/// </summary>
-	List<AnyGraphLink> ConnectedNodes{get; set;}
+	List<AnyGraphLink> Links{get;}
 
 	/// <summary>
 	/// Used to display the node is currently active.
 	/// </summary>
 	/// <value><c>true</c> if active; otherwise, <c>false</c>.</value>
-	bool Active{get;set;}
+	bool Active{get;}
 }
