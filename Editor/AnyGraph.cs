@@ -572,13 +572,15 @@ namespace AnyGraph{
 				float width = GUILayoutUtility.GetRect (new GUIContent(node.representedNode.Name), "Label").width;
 				SelectNode (node);
 
+				EditorGUILayout.BeginHorizontal ();
 				if(_selected.Settings.allowNodeLinking && GUILayout.Button ("Link To...")){
 					_nodeToLink = node;
 					_linkingNode = true;
 				}
 
 				bool repaint = _selected.DrawNode (node.representedNode);
-
+				
+				EditorGUILayout.BeginVertical ();
 				for(int i = 0; i < node.links.Count; i++){
 					GUILayout.Label (node.links[i].linkName);
 					//Link temp = node.links[i];
@@ -592,6 +594,17 @@ namespace AnyGraph{
 						node.links[i].SetOffset (lastRect.y + (lastRect.height / 2));
 					}
 				}
+				EditorGUILayout.EndVertical ();
+
+				EditorGUILayout.BeginVertical ();
+				GUI.color = Color.green;
+				if(node.Collapsed){
+					GUILayout.Label ("C\nO\nL\nL\nA\nP\nS\nE\nD");
+				}
+				GUI.color = Color.white;
+				EditorGUILayout.EndVertical ();
+
+				EditorGUILayout.EndHorizontal ();
 
 				if(repaint){
 					Repaint();
