@@ -41,7 +41,6 @@ namespace AnyGraph{
 		private IAnyGraphable _selected = null;
 		private bool _linkingNode = false;
 		private Node _nodeToLink = null;
-		private List<AnyGraphAliasNode> _aliases = new List<AnyGraphAliasNode>();
 
 		// New Node & Link systems
 		private static List<Node> _allNodes = new List<Node>();
@@ -90,7 +89,6 @@ namespace AnyGraph{
 			_selected = null;
 			_linkingNode = false;
 			_nodeToLink = null;
-			_aliases = new List<AnyGraphAliasNode>();
 			
 			// New Node & Link systems
 			_allNodes = new List<Node>();
@@ -146,15 +144,28 @@ namespace AnyGraph{
 			_updateThrottler = _updateThrottler++%10000;
 		}
 
-		private void GenerateCompleteNodeMap(List<IAnyGraphNode> nodes){
-			_cachedNodes = nodes;
+		private void GenerateCompleteNodeMap(List<IAnyGraphNode> nodes, string rootStateName = ""){
+			Debug.Log ("Regen");
+			_cachedNodes.Clear();
+			_cachedNodes.AddRange (nodes);
+
 			_allNodes = new List<Node>();
 			List<IAnyGraphNode> rootNodes = new List<IAnyGraphNode>();
-			rootNodes.AddRange(_cachedNodes);
 
-			foreach(IAnyGraphNode n in _cachedNodes){
-				foreach(AnyGraphLink l in n.Links){
-					rootNodes.Remove (l.connection);
+			if(!string.IsNullOrEmpty(rootStateName)){
+				IAnyGraphNode root = _cachedNodes.Find (x => x.Name == rootStateName);
+
+				if(root != null){
+					rootNodes.Add (root);
+				}
+			}
+
+			if(rootNodes.Count == 0){
+				rootNodes.AddRange(_cachedNodes);
+				foreach(IAnyGraphNode n in _cachedNodes){
+					foreach(AnyGraphLink l in n.Links){
+						rootNodes.Remove (l.connection);
+					}
 				}
 			}
 
@@ -171,9 +182,8 @@ namespace AnyGraph{
 				_allNodes.AddRange (newNode.SetupRecursively ());
 			}
 
+			Debug.Log (_allNodes.Count);
 			_needRearrange = true;
-
-			Debug.Log ("Complete node map was generated.");
 		}
 
 		private void OnGUI(){
@@ -187,25 +197,30 @@ namespace AnyGraph{
 
 			HandleEvents ();
 			_zoomArea = new Rect(0, 0, position.width - _optionWindowRect.width, position.height);
-			List<MonoBehaviour> availableToDraw = new List<MonoBehaviour>();
+			List<IAnyGraphable> availableToDraw = new List<IAnyGraphable>();
 			if(Selection.activeGameObject != null){
-			 availableToDraw = Selection.activeGameObject.GetComponents<MonoBehaviour>().Where(x => (x is IAnyGraphable)).ToList();
+				MonoBehaviour[] mono = Selection.activeGameObject.GetComponents<MonoBehaviour>();
+				for(int i = 0; i < mono.Length; i++){
+					if(mono[i] is IAnyGraphable){
+						availableToDraw.Add(mono[i] as IAnyGraphable);
+					}
+				}
 			}
 
 			// Change the selected object if it can be drawn.
 			if((_selected == null || _selected != Selection.activeObject as IAnyGraphable) && Selection.activeObject is IAnyGraphable){
 				Reset ();
 				_selected = Selection.activeObject as IAnyGraphable;
-				GenerateCompleteNodeMap (_selected.Nodes);
+				GenerateCompleteNodeMap (_selected.Nodes, _selected.ExplicitRootNodeName);
 				Repaint ();
 			}
-			else if(availableToDraw.Count > 0){
+			else if(!availableToDraw.Contains (_selected)){
 				for(int i = 0; i < availableToDraw.Count; i++){
 					if(availableToDraw[i] != null && availableToDraw[i] as IAnyGraphable != _selected){
 						Reset ();
-						_selected = Selection.activeGameObject.GetComponents<MonoBehaviour>().Where(x => (x is IAnyGraphable)).ToArray ()[0] as IAnyGraphable;
-						GenerateCompleteNodeMap (_selected.Nodes);
-						Repaint ();
+						_selected = availableToDraw[i];
+						GenerateCompleteNodeMap (_selected.Nodes, _selected.ExplicitRootNodeName);
+						return;
 					}
 				}
 			}
@@ -244,10 +259,7 @@ namespace AnyGraph{
 				_selected.Settings = new AnyGraphSettings();
 			}
 
-			if(_selected.Nodes != _cachedNodes){
-				GenerateCompleteNodeMap (_selected.Nodes);
-			}
-
+			CheckNodes ();
 			CheckNodeLinks ();
 
 			Rect scrollViewRect = EditorZoomArea.Begin (_zoom, new Rect(0, 0, position.width - _optionWindowRect.width, position.height));
@@ -340,7 +352,7 @@ namespace AnyGraph{
 
 				if(GUILayout.Button ("Force Refresh")){
 					Reset ();
-					return false;
+					return true;
 					//GenerateCompleteNodeMap (_selected.Nodes);
 				}
 
@@ -523,7 +535,7 @@ namespace AnyGraph{
 	
 			_allNodePos = new List<Rect>();
 			foreach(Node n in _allNodes){
-				if(n.parentNode == null || !n.parentNode.Collapsed){
+				if(n.Parents.Count == 0 || !n.Parents.Last ().Collapsed){
 					DrawNode (n);
 				}
 			}
@@ -1099,8 +1111,26 @@ namespace AnyGraph{
 		private void CheckNodeLinks(){
 			foreach(Node n in _allNodes){
 				if(n.representedNode.Links.Count != n.links.Count){
-					GenerateCompleteNodeMap (_selected.Nodes);
+					//GenerateCompleteNodeMap (_selected.Nodes, _selected.ExplicitRootNodeName);
 					return;
+				}
+			}
+		}
+
+		private void CheckNodes(){
+			List<IAnyGraphNode> pulledNodes = _selected.Nodes;
+			for(int i = 0; i < pulledNodes.Count; i++){
+				if(!_cachedNodes.Contains(pulledNodes[i])){
+					Debug.Log ("New Node");
+					GenerateCompleteNodeMap (pulledNodes, _selected.ExplicitRootNodeName);
+					return;
+				}
+			}
+			
+			for(int i = 0; i < _cachedNodes.Count; i++){
+				if(!pulledNodes.Contains (_cachedNodes[i])){
+					Debug.Log ("Discarded Node");
+					GenerateCompleteNodeMap (pulledNodes, _selected.ExplicitRootNodeName);
 				}
 			}
 		}
@@ -1112,28 +1142,6 @@ namespace AnyGraph{
 		/// <param name="ySpacing">Y spacing.</param>
 		private void RearrangeNodesAsTree(float xSpacing, float ySpacing, bool duplicateBranches = false){
 			_needRearrange = false;
-			for(int i = 0; i < _allNodes.Count; i++){
-				if(_allNodes[i] != null && _allNodes[i].representedNode.IsNodeRedundant()){
-					Debug.LogWarning ("There is a redundancy in the graph. Aborting tree graphing.");
-					// TODO: Implement new aliasing system to only alias redundant nodes.
-					return;
-
-					/*while(_allNodes[i].representedNode.IsNodeRedundant()){
-
-						IAnyGraphNode instigator = _allNodes[i].representedNode.GetRedundancyInstigator ();
-						if(instigator == null){
-							break;
-						}
-
-						AnyGraphLink aliasedLink = new AnyGraphLink();
-						aliasedLink.connection = new AnyGraphAliasNode(_grabbedNodes[i]) as IAnyGraphNode; 
-						aliasedLink.linkText = _grabbedNodes.Find (x => x == instigator).ConnectedNodes.Find (x => x.connection == _grabbedNodes[i]).linkText;
-						_grabbedNodes.Add (aliasedLink.connection);
-
-						instigator.ConnectedNodes[instigator.ConnectedNodes.FindIndex(x => x.connection == _grabbedNodes[i])] = aliasedLink;
-					}*/
-				}
-			}
 
 			List<List<Node>> allNodeLevels = new List<List<Node>>();
 			List<Node> rootNodes = new List<Node>();
@@ -1219,23 +1227,28 @@ namespace AnyGraph{
 			public List<Link> links;
 			public Rect nodePos;
 			public float heightExtent {get; private set;}
-			public Node parentNode;
 			private bool _collapsed = false;
+			private List<Node> _parents = new List<Node>();
 
 			public List<Node> SetupRecursively(){
 				List<Node> linked = new List<Node>();
 				if(representedNode == null){
 					return linked;
 				}
+				
+				List<Node> parents = Parents;
+				parents.Add (this);
+
 				foreach(AnyGraphLink link in representedNode.Links){
-					if(link.connection != null){
+					if(link.connection != null && !parents.Select (x => x.representedNode).Contains (link.connection)){
+
 						Node newNode = new Node(){
 							representedNode = link.connection,
 							isRoot = false,
 							guid = System.Guid.NewGuid ().ToString (),
 							links = new List<Link>(),
 							nodePos = new Rect(),
-							parentNode = this,
+							Parents = parents,
 						};
 						links.Add (new Link(){
 							linkName = link.linkText,
@@ -1297,6 +1310,11 @@ namespace AnyGraph{
 						}
 					}
 				}
+			}
+
+			public List<Node> Parents{
+				get{return _parents;}
+				set{_parents = value;}
 			}
 		}
 

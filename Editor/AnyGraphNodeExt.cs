@@ -10,7 +10,7 @@ public static class AnyGraphNodeExt {
 			return false;
 		}
 
-		foreach(IAnyGraphNode current in currentNode.Links.Where (x => x.connection != null && !(x.connection is AnyGraphAliasNode)).Select (x => x.connection)){
+		foreach(IAnyGraphNode current in currentNode.Links.Where (x => x.connection != null).Select (x => x.connection)){
 			if(current == node){
 				return true;
 			}
@@ -39,7 +39,7 @@ public static class AnyGraphNodeExt {
 			return null;
 		}
 		
-		foreach(IAnyGraphNode current in currentNode.Links.Where (x => x.connection != null && !(x.connection is AnyGraphAliasNode)).Select (x => x.connection)){
+		foreach(IAnyGraphNode current in currentNode.Links.Where (x => x.connection != null).Select (x => x.connection)){
 			if(current == node){
 				return currentNode;
 			}
