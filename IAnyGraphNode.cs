@@ -23,10 +23,4 @@ public interface IAnyGraphNode {
 	/// Gets the connected nodes to draw the links.
 	/// </summary>
 	List<AnyGraphLink> Links{get;}
-
-	/// <summary>
-	/// Used to display the node is currently active.
-	/// </summary>
-	/// <value><c>true</c> if active; otherwise, <c>false</c>.</value>
-	bool Active{get;}
 }

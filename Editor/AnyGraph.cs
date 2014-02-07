@@ -273,6 +273,14 @@ namespace AnyGraph{
 				}
 			}
 
+			string[] activePath = _selected.ActiveNodePath;
+			for(int i = 0; i < _allNodes.Count; i++){
+				if(_allNodes[i].isRoot && _allNodes[i].representedNode.Name == activePath[0]){
+					_allNodes[i].SetActiveRecursively (activePath, 0);
+					break;
+				}
+			}
+
 			Rect scrollViewRect = EditorZoomArea.Begin (_zoom, new Rect(0, 0, position.width - _optionWindowRect.width, position.height));
 			scrollViewRect.y -= 21;
 			scrollPos = GUI.BeginScrollView (scrollViewRect, scrollPos, _graphExtents, GUIStyle.none, GUIStyle.none);
@@ -502,7 +510,10 @@ namespace AnyGraph{
 						continue;
 					}
 					Color linkColor = SelectedSettings.baseLinkColor;
-					if(SelectedSettings.colorFromSelected && _selection.Find (x => x.links.Contains (l)) != null &&
+					if(n._active && l.TargetNode._active){
+						linkColor = new Color(1, 0, 0, 1);
+					}
+					else if(SelectedSettings.colorFromSelected && _selection.Find (x => x.links.Contains (l)) != null &&
 					   SelectedSettings.colorToSelected && _selection.Select (x => x.guid).Contains (l.guid)){
 						linkColor = SelectedSettings.selectedLinkColor;
 					}
@@ -575,6 +586,11 @@ namespace AnyGraph{
 			// Color if node is selected.
 			if(_selection.Contains (node)){
 				nodeColor = (UnityEditor.Graphs.Styles.Color)(int)SelectedSettings.selectedNodeColor;
+			}
+
+			if(node._active){
+				nodeColor = UnityEditor.Graphs.Styles.Color.Red;
+				node._active = false;
 			}
 
 			// Draw node.
@@ -1226,6 +1242,7 @@ namespace AnyGraph{
 			public float heightExtent {get; private set;}
 			public Node parentNode;
 			private bool _collapsed = false;
+			public bool _active = false;
 
 			public List<Node> SetupRecursively(){
 				List<Node> linked = new List<Node>();
@@ -1258,6 +1275,23 @@ namespace AnyGraph{
 				}
 
 				return linked;
+			}
+
+			public void SetActiveRecursively(string[] activePath, int curLevel){
+				curLevel++;
+				_active = true;
+
+				if(curLevel >= activePath.Length){
+					return;
+				}
+
+				for(int i = 0; i < links.Count; i++){
+					Node next = links[i].TargetNode;
+					if(next != null && next.representedNode.Name == activePath[curLevel]){
+						next.SetActiveRecursively (activePath, curLevel);
+						break;
+					}
+				}
 			}
 
 			public void UpdateChildBlocks(float yStep){

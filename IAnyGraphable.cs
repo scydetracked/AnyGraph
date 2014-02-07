@@ -42,4 +42,6 @@ public interface IAnyGraphable{
 	/// <param name="n1">Node 1.</param>
 	/// <param name="n2">Node 2.</param>
 	void DisconnectNodes(UnityEngine.Object n1, UnityEngine.Object n2);
+
+	string[] ActiveNodePath{get;}
 }
