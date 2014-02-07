@@ -4,8 +4,7 @@ using System.Collections;
 /// <summary>
 /// Settings used by AnyGraph.
 /// </summary>
-[System.Serializable]
-public sealed class AnyGraphSettings {
+public sealed class AnyGraphSettings : ScriptableObject {
 	public enum NodeColors{
 		Grey,
 		Gray = 0,

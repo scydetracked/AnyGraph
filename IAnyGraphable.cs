@@ -2,17 +2,12 @@ using UnityEngine;
 using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
-using AnyGraph;
 
 /// <summary>
 /// Interface to attach on a class to make it graphable.
 /// </summary>
 public interface IAnyGraphable{
-	/// <summary>
-	/// The GraphSettings used by the editor(Should be linked to a field in the class implementing it for serialization to work).
-	/// </summary>
-	/// <value>The graph settings.</value>
-	AnyGraphSettings Settings{get; set;}
+	string ExplicitRootNodeName{get;}
 
 	/// <summary>
 	/// List of nodes that get called for drawing.

@@ -41,7 +41,6 @@ namespace AnyGraph{
 		private IAnyGraphable _selected = null;
 		private bool _linkingNode = false;
 		private Node _nodeToLink = null;
-		private List<AnyGraphAliasNode> _aliases = new List<AnyGraphAliasNode>();
 
 		// New Node & Link systems
 		private static List<Node> _allNodes = new List<Node>();
@@ -51,11 +50,30 @@ namespace AnyGraph{
 		private int _updateThrottler = 0;
 
 		private bool _needRearrange = false;
+		private IEnumerator _rearrange;
+	
+		private AnyGraphSettings _loadedSettings;
+		private AnyGraphSettings SelectedSettings{
+			get{
+				if(_loadedSettings == null){
+					_loadedSettings = ScriptableObject.CreateInstance<AnyGraphSettings>();
+				}
 
-		[MenuItem("Window/AnyGraph")]
+				return _loadedSettings;
+			}
+		}
+
+		[MenuItem("Window/AnyGraph %g")]
 		public static void Openwindow(){
-			AnyGraph window = EditorWindow.GetWindow<AnyGraph>("Any Graph", true);
-			window.Reset ();
+			EditorWindow.GetWindow<AnyGraph>("AnyGraph", true);
+		}
+
+		private void OnEnable(){
+			Reset ();
+		}
+
+		private List<AnyGraphSettings> LoadSettings(){
+			return new List<AnyGraphSettings>();
 		}
 
 		private Vector2 ConvertScreenCoordsToZoomCoords(Vector2 screenCoords){
@@ -84,18 +102,17 @@ namespace AnyGraph{
 			
 			
 			// Non anygraph specific.
-			_initialDragNodePosition = new Dictionary<Node, Rect>();
-			_allNodePos = new List<Rect>();
-			_cachedNodes = new List<IAnyGraphNode>();
+			_initialDragNodePosition.Clear ();
+			_allNodePos.Clear ();
+			_cachedNodes.Clear ();
 			_selected = null;
 			_linkingNode = false;
 			_nodeToLink = null;
-			_aliases = new List<AnyGraphAliasNode>();
 			
 			// New Node & Link systems
-			_allNodes = new List<Node>();
-			_selection = new List<Node>();
-			_oldSelection = new List<Node>();
+			_allNodes.Clear ();
+			_selection.Clear ();
+			_oldSelection.Clear ();
 
 			System.GC.Collect ();
 		}
@@ -172,8 +189,6 @@ namespace AnyGraph{
 			}
 
 			_needRearrange = true;
-
-			Debug.Log ("Complete node map was generated.");
 		}
 
 		private void OnGUI(){
@@ -239,16 +254,24 @@ namespace AnyGraph{
 				return;
 			}
 
-			// Create a new settings instance if one doesn't exist.
-			if(_selected.Settings == null){
-				_selected.Settings = new AnyGraphSettings();
-			}
+			if(Event.current.type != EventType.Repaint){
+				if(_rearrange != null){
+					if(!_rearrange.MoveNext ()){
+						_rearrange = null;
+					}
+				}
+				else{
+					if(_selected.Nodes != _cachedNodes){
+						GenerateCompleteNodeMap (_selected.Nodes);
+					}
 
-			if(_selected.Nodes != _cachedNodes){
-				GenerateCompleteNodeMap (_selected.Nodes);
-			}
+					CheckNodeLinks ();
 
-			CheckNodeLinks ();
+					if(_needRearrange){
+						RearrangeTree(SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y, true);
+					}
+				}
+			}
 
 			Rect scrollViewRect = EditorZoomArea.Begin (_zoom, new Rect(0, 0, position.width - _optionWindowRect.width, position.height));
 			scrollViewRect.y -= 21;
@@ -265,10 +288,6 @@ namespace AnyGraph{
 			GUI.EndScrollView();
 			EditorZoomArea.End ();
 
-			if(_needRearrange){
-				RearrangeNodesAsTree(_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y, true);
-			}
-
 			// Options window.
 			if(DrawOptionsWindow()){
 				Repaint ();
@@ -280,13 +299,13 @@ namespace AnyGraph{
 			if(n.Collapsed){
 				menu.AddItem (new GUIContent("Expand"), false, delegate() {
 					n.Collapsed = false;
-					RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
+					RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 				});
 			}
 			else{
 				menu.AddItem (new GUIContent("Collapse"), false, delegate() {
 					n.Collapsed = true;
-					RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
+					RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 				});
 			}
 
@@ -302,14 +321,14 @@ namespace AnyGraph{
 				for(int i = 0; i < n.Length; i ++){
 					n[i].Collapsed = false;
 				}
-				RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
+				RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 			});
 
 			menu.AddItem (new GUIContent("Collapse Multiple"), false, delegate() {
 				for(int i = 0; i < n.Length; i++){
 					n[i].Collapsed = true;
 				}
-				RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
+				RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 			});
 			
 			Vector2 mousePos = (Event.current.mousePosition);
@@ -335,17 +354,18 @@ namespace AnyGraph{
 				_optionWindowScrollPos = GUILayout.BeginScrollView(_optionWindowScrollPos, GUILayout.MaxHeight (_optionWindowRect.height - 20));
 
 				if(GUILayout.Button ("Structure")){
-					RearrangeNodesAsTree (_selected.Settings.nodePlacementOffset.x, _selected.Settings.nodePlacementOffset.y);
+					RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 				}
 
 				if(GUILayout.Button ("Force Refresh")){
 					Reset ();
+					_needRearrange = true;
 					return false;
 					//GenerateCompleteNodeMap (_selected.Nodes);
 				}
 
 				// Buttons for manual linking/unlinking.
-				if(_selected.Settings.allowNodeLinking && _selection.Count == 2){
+				if(SelectedSettings.allowNodeLinking && _selection.Count == 2){
 					if(_selection[0].representedNode.Links.Select (x => x.connection).Contains (_selection[1].representedNode)){
 						if(GUILayout.Button (string.Format("Disconnect '{0}' --X--> '{1}'", _selection[0].representedNode.Name, _selection[1].representedNode.Name))){
 							_selected.DisconnectNodes (_selection[0].representedNode.EditorObj, _selection[1].representedNode.EditorObj);
@@ -377,35 +397,29 @@ namespace AnyGraph{
 				_showOptionsGraphSettings = EditorGUILayout.Foldout (_showOptionsGraphSettings, "AnyGraph Settings");
 				if(_showOptionsGraphSettings){
 					EditorGUI.indentLevel++;
-					_selected.Settings.nodePlacementOffset = EditorGUILayout.Vector2Field ("Auto-Placement Offset", _selected.Settings.nodePlacementOffset);
-					_selected.Settings.structuringMode = (AnyGraphSettings.GraphOrganizingMode)EditorGUILayout.EnumPopup ("Placement Type", _selected.Settings.structuringMode);
-					_selected.Settings.allowNodeLinking = EditorGUILayout.Toggle ("Allow Node Linking", _selected.Settings.allowNodeLinking);
-					_selected.Settings.drawLinkOnTop = EditorGUILayout.Toggle ("Draw Links On Top", _selected.Settings.drawLinkOnTop);
-					_selected.Settings.linkWidth = EditorGUILayout.FloatField ("Link Width", _selected.Settings.linkWidth);
-					_selected.Settings.baseLinkColor = EditorGUILayout.ColorField ("Base Link Color", _selected.Settings.baseLinkColor);
-					_selected.Settings.selectedNodeColor = (AnyGraphSettings.NodeColors)EditorGUILayout.EnumPopup("Selected Node Color", _selected.Settings.selectedNodeColor);
-					_selected.Settings.selectedLinkColor = EditorGUILayout.ColorField ("Selected Link Color", _selected.Settings.selectedLinkColor);
+					SelectedSettings.nodePlacementOffset = EditorGUILayout.Vector2Field ("Auto-Placement Offset", SelectedSettings.nodePlacementOffset);
+					SelectedSettings.structuringMode = (AnyGraphSettings.GraphOrganizingMode)EditorGUILayout.EnumPopup ("Placement Type", SelectedSettings.structuringMode);
+					SelectedSettings.allowNodeLinking = EditorGUILayout.Toggle ("Allow Node Linking", SelectedSettings.allowNodeLinking);
+					SelectedSettings.drawLinkOnTop = EditorGUILayout.Toggle ("Draw Links On Top", SelectedSettings.drawLinkOnTop);
+					SelectedSettings.linkWidth = EditorGUILayout.FloatField ("Link Width", SelectedSettings.linkWidth);
+					SelectedSettings.baseLinkColor = EditorGUILayout.ColorField ("Base Link Color", SelectedSettings.baseLinkColor);
+					SelectedSettings.selectedNodeColor = (AnyGraphSettings.NodeColors)EditorGUILayout.EnumPopup("Selected Node Color", SelectedSettings.selectedNodeColor);
+					SelectedSettings.selectedLinkColor = EditorGUILayout.ColorField ("Selected Link Color", SelectedSettings.selectedLinkColor);
 
 					EditorGUILayout.Space ();
-					_selected.Settings.colorFromSelected = EditorGUILayout.Toggle ("Color Links From Selected", _selected.Settings.colorFromSelected);
-					if(_selected.Settings.colorFromSelected){
+					SelectedSettings.colorFromSelected = EditorGUILayout.Toggle ("Color Links From Selected", SelectedSettings.colorFromSelected);
+					if(SelectedSettings.colorFromSelected){
 						EditorGUI.indentLevel++;
-						_selected.Settings.fromNodeColor = (AnyGraphSettings.NodeColors)EditorGUILayout.EnumPopup("Selected Node Color", _selected.Settings.fromNodeColor);
-						_selected.Settings.fromLinkColor = EditorGUILayout.ColorField ("From Link Color", _selected.Settings.fromLinkColor);
+						SelectedSettings.fromNodeColor = (AnyGraphSettings.NodeColors)EditorGUILayout.EnumPopup("Selected Node Color", SelectedSettings.fromNodeColor);
+						SelectedSettings.fromLinkColor = EditorGUILayout.ColorField ("From Link Color", SelectedSettings.fromLinkColor);
 						EditorGUI.indentLevel--;
 					}
-					_selected.Settings.colorToSelected = EditorGUILayout.Toggle ("Color Links To Selected", _selected.Settings.colorToSelected);
-					if(_selected.Settings.colorToSelected){
+					SelectedSettings.colorToSelected = EditorGUILayout.Toggle ("Color Links To Selected", SelectedSettings.colorToSelected);
+					if(SelectedSettings.colorToSelected){
 						EditorGUI.indentLevel++;
-						_selected.Settings.toNodeColor = (AnyGraphSettings.NodeColors)EditorGUILayout.EnumPopup("Selected Node Color", _selected.Settings.toNodeColor);
-						_selected.Settings.toLinkColor = EditorGUILayout.ColorField ("To Link Color", _selected.Settings.toLinkColor);
+						SelectedSettings.toNodeColor = (AnyGraphSettings.NodeColors)EditorGUILayout.EnumPopup("Selected Node Color", SelectedSettings.toNodeColor);
+						SelectedSettings.toLinkColor = EditorGUILayout.ColorField ("To Link Color", SelectedSettings.toLinkColor);
 						EditorGUI.indentLevel--;
-					}
-
-					EditorGUILayout.Space ();
-
-					if(GUILayout.Button ("Reset Settings")){
-						_selected.Settings = new AnyGraphSettings ();
 					}
 					EditorGUI.indentLevel--;
 				}
@@ -487,16 +501,16 @@ namespace AnyGraph{
 					if(string.IsNullOrEmpty(l.guid)){
 						continue;
 					}
-					Color linkColor = _selected.Settings.baseLinkColor;
-					if(_selected.Settings.colorFromSelected && _selection.Find (x => x.links.Contains (l)) != null &&
-					   _selected.Settings.colorToSelected && _selection.Select (x => x.guid).Contains (l.guid)){
-						linkColor = _selected.Settings.selectedLinkColor;
+					Color linkColor = SelectedSettings.baseLinkColor;
+					if(SelectedSettings.colorFromSelected && _selection.Find (x => x.links.Contains (l)) != null &&
+					   SelectedSettings.colorToSelected && _selection.Select (x => x.guid).Contains (l.guid)){
+						linkColor = SelectedSettings.selectedLinkColor;
 					}
-					else if(_selected.Settings.colorFromSelected && _selection.Find (x => x.links.Contains (l)) != null){
-						linkColor = _selected.Settings.fromLinkColor;
+					else if(SelectedSettings.colorFromSelected && _selection.Find (x => x.links.Contains (l)) != null){
+						linkColor = SelectedSettings.fromLinkColor;
 					}
-					else if(_selected.Settings.colorToSelected && _selection.Select (x => x.guid).Contains (l.guid)){
-						linkColor = _selected.Settings.toLinkColor;
+					else if(SelectedSettings.colorToSelected && _selection.Select (x => x.guid).Contains (l.guid)){
+						linkColor = SelectedSettings.toLinkColor;
 					}
 
 					DrawLink(n, _allNodes.Find (x => x.guid == l.guid), l.yOffset, linkColor);
@@ -508,7 +522,7 @@ namespace AnyGraph{
 					_linkingNode = false;
 				}
 				else{
-					Color linkColor = _selected.Settings.baseLinkColor;
+					Color linkColor = SelectedSettings.baseLinkColor;
 					Vector3 nodePos = new Vector3(_nodeToLink.nodePos.x + _nodeToLink.nodePos.width, _nodeToLink.nodePos.y);
 					DrawLink (nodePos, new Vector3(Event.current.mousePosition.x, Event.current.mousePosition.y, 0), linkColor);
 				}
@@ -539,20 +553,20 @@ namespace AnyGraph{
 			UnityEditor.Graphs.Styles.Color nodeColor = UnityEditor.Graphs.Styles.Color.Gray;
 
 			// Color if the node is going to the selected node.
-			if(_selected.Settings.colorToSelected){
+			if(SelectedSettings.colorToSelected){
 				foreach(Link l in node.links){
 					if(_selection.Select (x => x.guid).Contains (l.guid)){
-						nodeColor = (UnityEditor.Graphs.Styles.Color)(int)_selected.Settings.toNodeColor;
+						nodeColor = (UnityEditor.Graphs.Styles.Color)(int)SelectedSettings.toNodeColor;
 						break;
 					}
 				}
 			}
 
 			// Color if the node is coming from the selected node.
-			if(_selected.Settings.colorFromSelected){
+			if(SelectedSettings.colorFromSelected){
 				foreach(Node selectedNode in _selection){
 					if(selectedNode.links.Select (x => x.guid).Contains (node.guid)){
-						nodeColor = (UnityEditor.Graphs.Styles.Color)(int)_selected.Settings.fromNodeColor;
+						nodeColor = (UnityEditor.Graphs.Styles.Color)(int)SelectedSettings.fromNodeColor;
 						break;
 					}
 				}
@@ -560,7 +574,7 @@ namespace AnyGraph{
 
 			// Color if node is selected.
 			if(_selection.Contains (node)){
-				nodeColor = (UnityEditor.Graphs.Styles.Color)(int)_selected.Settings.selectedNodeColor;
+				nodeColor = (UnityEditor.Graphs.Styles.Color)(int)SelectedSettings.selectedNodeColor;
 			}
 
 			// Draw node.
@@ -573,7 +587,7 @@ namespace AnyGraph{
 				SelectNode (node);
 
 				EditorGUILayout.BeginHorizontal ();
-				if(_selected.Settings.allowNodeLinking && GUILayout.Button ("Link To...")){
+				if(SelectedSettings.allowNodeLinking && GUILayout.Button ("Link To...")){
 					_nodeToLink = node;
 					_linkingNode = true;
 				}
@@ -644,12 +658,12 @@ namespace AnyGraph{
 			Vector3[] points;
 			Vector3[] tangents;
 
-			if(_selected.Settings.useCurvedConnectors){
+			if(SelectedSettings.useCurvedConnectors){
 				GetCurvyConnectorValues (startPos, endPos, out points, out tangents);
-		        Handles.DrawBezier(points[0], points[1], tangents[0], tangents[1], linkColor, (Texture2D)UnityEditor.Graphs.Styles.connectionTexture.image, _selected.Settings.linkWidth);
+		        Handles.DrawBezier(points[0], points[1], tangents[0], tangents[1], linkColor, (Texture2D)UnityEditor.Graphs.Styles.connectionTexture.image, SelectedSettings.linkWidth);
 			}
 			else{
-				Handles.DrawBezier (startPos, endPos, endPos, startPos, linkColor, (Texture2D)UnityEditor.Graphs.Styles.connectionTexture.image, _selected.Settings.linkWidth);
+				Handles.DrawBezier (startPos, endPos, endPos, startPos, linkColor, (Texture2D)UnityEditor.Graphs.Styles.connectionTexture.image, SelectedSettings.linkWidth);
 			}
 			
 			
@@ -1105,33 +1119,23 @@ namespace AnyGraph{
 			}
 		}
 
+		private void RearrangeTree(float xSpacing, float ySpacing, bool duplicateBranches = false){
+			if(_rearrange == null){
+				_rearrange = RearrangeNodesAsTree (xSpacing, ySpacing, duplicateBranches);
+			}
+		}
+
 		/// <summary>
 		/// Rearranges the nodes as tree.
 		/// </summary>
 		/// <param name="xSpacing">X spacing.</param>
 		/// <param name="ySpacing">Y spacing.</param>
-		private void RearrangeNodesAsTree(float xSpacing, float ySpacing, bool duplicateBranches = false){
-			_needRearrange = false;
+		private IEnumerator RearrangeNodesAsTree(float xSpacing, float ySpacing, bool duplicateBranches = false){
+			yield return null;
 			for(int i = 0; i < _allNodes.Count; i++){
 				if(_allNodes[i] != null && _allNodes[i].representedNode.IsNodeRedundant()){
 					Debug.LogWarning ("There is a redundancy in the graph. Aborting tree graphing.");
-					// TODO: Implement new aliasing system to only alias redundant nodes.
-					return;
-
-					/*while(_allNodes[i].representedNode.IsNodeRedundant()){
-
-						IAnyGraphNode instigator = _allNodes[i].representedNode.GetRedundancyInstigator ();
-						if(instigator == null){
-							break;
-						}
-
-						AnyGraphLink aliasedLink = new AnyGraphLink();
-						aliasedLink.connection = new AnyGraphAliasNode(_grabbedNodes[i]) as IAnyGraphNode; 
-						aliasedLink.linkText = _grabbedNodes.Find (x => x == instigator).ConnectedNodes.Find (x => x.connection == _grabbedNodes[i]).linkText;
-						_grabbedNodes.Add (aliasedLink.connection);
-
-						instigator.ConnectedNodes[instigator.ConnectedNodes.FindIndex(x => x.connection == _grabbedNodes[i])] = aliasedLink;
-					}*/
+					yield break;
 				}
 			}
 
@@ -1140,7 +1144,7 @@ namespace AnyGraph{
 			rootNodes.AddRange (_allNodes.Where(x => x.isRoot));
 
 			for(int i = 0; i < rootNodes.Count; i++){
-				rootNodes[i].UpdateChildBlocks(_selected.Settings.nodePlacementOffset.y);
+				rootNodes[i].UpdateChildBlocks(SelectedSettings.nodePlacementOffset.y);
 			}
 
 			allNodeLevels.Add (rootNodes);
@@ -1165,14 +1169,14 @@ namespace AnyGraph{
 				allNodeLevels.Add (newLevel);
 			}
 
-			if(_selected.Settings.structuringMode == AnyGraphSettings.GraphOrganizingMode.SpreadOut){
+			if(SelectedSettings.structuringMode == AnyGraphSettings.GraphOrganizingMode.SpreadOut){
 				float[] xOffset = new float[allNodeLevels.Count];
 				float totOffset = 0;
 				for(int i = 0; i < allNodeLevels.Count - 1; i++){
 					for(int j = 0; j < allNodeLevels[i+1].Count; j++){
 						xOffset[i+1] = Mathf.Max (allNodeLevels[i+1][j].nodePos.width, xOffset[i+1]);
 					}
-					xOffset[i+1] += _selected.Settings.nodePlacementOffset.x + totOffset;
+					xOffset[i+1] += SelectedSettings.nodePlacementOffset.x + totOffset;
 					totOffset = xOffset[i+1];
 				}
 
@@ -1181,7 +1185,7 @@ namespace AnyGraph{
 					n.RecursiveSetPosition (1, xOffset);
 				}
 			}
-			else if(_selected.Settings.structuringMode == AnyGraphSettings.GraphOrganizingMode.Pack){
+			else if(SelectedSettings.structuringMode == AnyGraphSettings.GraphOrganizingMode.Pack){
 				List<Rect> levelRects = new List<Rect>();
 				foreach(List<Node> level in allNodeLevels){
 					Rect levRect = new Rect(0, 0, 0, 0);
@@ -1208,6 +1212,7 @@ namespace AnyGraph{
 					nodeX += levelRects[i].width + xSpacing;
 				}
 			}
+			yield return null;
 			_graphExtents = GetGraphExtents();
 		}
 		
