@@ -9,6 +9,8 @@ using System.Collections.Generic;
 public interface IAnyGraphable{
 	string ExplicitRootNodeName{get;}
 
+	string ExplicitRootNodeName{get;}
+
 	/// <summary>
 	/// List of nodes that get called for drawing.
 	/// This should point to a serializable reference for alias nodes to work.
