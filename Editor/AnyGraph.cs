@@ -274,10 +274,12 @@ namespace AnyGraph{
 			}
 
 			string[] activePath = _selected.ActiveNodePath;
-			for(int i = 0; i < _allNodes.Count; i++){
-				if(_allNodes[i].isRoot && _allNodes[i].representedNode.Name == activePath[0]){
-					_allNodes[i].SetActiveRecursively (activePath, 0);
-					break;
+			if(activePath.Length > 0){
+				for(int i = 0; i < _allNodes.Count; i++){
+					if(_allNodes[i].isRoot && _allNodes[i].representedNode.Name == activePath[0]){
+						_allNodes[i].SetActiveRecursively (activePath, 0);
+						break;
+					}
 				}
 			}
 
