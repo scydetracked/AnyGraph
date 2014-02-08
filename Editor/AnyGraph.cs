@@ -167,23 +167,38 @@ namespace AnyGraph{
 			_cachedNodes = nodes;
 			_allNodes = new List<Node>();
 			List<IAnyGraphNode> rootNodes = new List<IAnyGraphNode>();
-			rootNodes.AddRange(_cachedNodes);
 
-			foreach(IAnyGraphNode n in _cachedNodes){
-				foreach(AnyGraphLink l in n.Links){
-					rootNodes.Remove (l.connection);
+			if(!string.IsNullOrEmpty(_selected.ExplicitRootNodeName)){
+				for(int i = 0; i < _cachedNodes.Count; i++){
+					if(_cachedNodes[i].Name == _selected.ExplicitRootNodeName){
+						rootNodes.Add (_cachedNodes[i]);
+						break;
+					}
 				}
 			}
 
-			foreach(IAnyGraphNode root in rootNodes.Where (x => x != null)){
+			if(rootNodes.Count == 0){
+				rootNodes.AddRange(_cachedNodes);
+				foreach(IAnyGraphNode n in _cachedNodes){
+					foreach(AnyGraphLink l in n.Links){
+						rootNodes.Remove (l.connection);
+					}
+				}
+			}
+
+			for(int i = 0; i < rootNodes.Count; i++){
+				if(rootNodes[i] == null){
+					continue;
+				}
+
 				Node newNode = new Node(){
-					representedNode = root,
+					representedNode = rootNodes[i],
 					isRoot = true,
 					guid = System.Guid.NewGuid ().ToString (),
 					links = new List<Link>(),
 					nodePos = new Rect(),
 				};
-
+				
 				_allNodes.Add (newNode);
 				_allNodes.AddRange (newNode.SetupRecursively ());
 			}
@@ -208,19 +223,21 @@ namespace AnyGraph{
 			}
 
 			// Change the selected object if it can be drawn.
-			if((_selected == null || _selected != Selection.activeObject as IAnyGraphable) && Selection.activeObject is IAnyGraphable){
-				Reset ();
-				_selected = Selection.activeObject as IAnyGraphable;
-				GenerateCompleteNodeMap (_selected.Nodes);
-				Repaint ();
-			}
-			else if(availableToDraw.Count > 0){
-				for(int i = 0; i < availableToDraw.Count; i++){
-					if(availableToDraw[i] != null && availableToDraw[i] as IAnyGraphable != _selected){
-						Reset ();
-						_selected = Selection.activeGameObject.GetComponents<MonoBehaviour>().Where(x => (x is IAnyGraphable)).ToArray ()[0] as IAnyGraphable;
-						GenerateCompleteNodeMap (_selected.Nodes);
-						Repaint ();
+			if(Event.current.type != EventType.Repaint){
+				if((_selected == null || _selected != Selection.activeObject as IAnyGraphable) && Selection.activeObject is IAnyGraphable){
+					Reset ();
+					_selected = Selection.activeObject as IAnyGraphable;
+					GenerateCompleteNodeMap (_selected.Nodes);
+					Repaint ();
+				}
+				else if(availableToDraw.Count > 0){
+					for(int i = 0; i < availableToDraw.Count; i++){
+						if(availableToDraw[i] != null && availableToDraw[i] as IAnyGraphable != _selected){
+							Reset ();
+							_selected = Selection.activeGameObject.GetComponents<MonoBehaviour>().Where(x => (x is IAnyGraphable)).ToArray ()[0] as IAnyGraphable;
+							GenerateCompleteNodeMap (_selected.Nodes);
+							Repaint ();
+						}
 					}
 				}
 			}
@@ -644,6 +661,10 @@ namespace AnyGraph{
 		/// <param name="yOffset">Y offset in the node.</param>
 		/// <param name="linkColor">Link color.</param>
 		private void DrawLink(Node startNode, Node endNode, float yOffset, Color linkColor){
+			if(startNode == null || endNode == null){
+				return;
+			}
+
 			Rect start = startNode.nodePos;
 			Rect end = endNode.nodePos;
 
