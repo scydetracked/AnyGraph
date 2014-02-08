@@ -200,7 +200,7 @@ namespace AnyGraph{
 				};
 				
 				_allNodes.Add (newNode);
-				_allNodes.AddRange (newNode.SetupRecursively ());
+				_allNodes.AddRange (newNode.SetupRecursively (new List<IAnyGraphNode>()));
 			}
 
 			_needRearrange = true;
@@ -227,6 +227,7 @@ namespace AnyGraph{
 				if((_selected == null || _selected != Selection.activeObject as IAnyGraphable) && Selection.activeObject is IAnyGraphable){
 					Reset ();
 					_selected = Selection.activeObject as IAnyGraphable;
+					Debug.Log ("Changed Selection, regenerating node map.");
 					GenerateCompleteNodeMap (_selected.Nodes);
 					Repaint ();
 				}
@@ -235,6 +236,7 @@ namespace AnyGraph{
 						if(availableToDraw[i] != null && availableToDraw[i] as IAnyGraphable != _selected){
 							Reset ();
 							_selected = Selection.activeGameObject.GetComponents<MonoBehaviour>().Where(x => (x is IAnyGraphable)).ToArray ()[0] as IAnyGraphable;
+							Debug.Log ("Changed Selection(2), regenerating node map.");
 							GenerateCompleteNodeMap (_selected.Nodes);
 							Repaint ();
 						}
@@ -278,10 +280,7 @@ namespace AnyGraph{
 					}
 				}
 				else{
-					if(_selected.Nodes != _cachedNodes){
-						GenerateCompleteNodeMap (_selected.Nodes);
-					}
-
+					CheckNodes ();
 					CheckNodeLinks ();
 
 					if(_needRearrange){
@@ -793,10 +792,9 @@ namespace AnyGraph{
 				}
 				case EventType.MouseUp:{
 					if (GUIUtility.hotControl == controlID){
-						foreach (Node node in _selection){
-							EditorUtility.SetDirty (_selected as UnityEngine.Object);
-						}
-						this._initialDragNodePosition.Clear ();
+						EditorUtility.SetDirty (_selected as UnityEngine.Object);
+
+						_initialDragNodePosition.Clear ();
 						_graphExtents = GetGraphExtents ();
 						GUIUtility.hotControl = 0;
 					}
@@ -812,8 +810,9 @@ namespace AnyGraph{
 							newPosition.y = rect.y + _nodeDragDistance.y - _initMousePos.y;
 						
 							node.nodePos = newPosition;
-							EditorUtility.SetDirty (_selected as UnityEngine.Object);
 						}
+					
+						EditorUtility.SetDirty (_selected as UnityEngine.Object);
 					}
 					break;
 				}
@@ -821,8 +820,8 @@ namespace AnyGraph{
 					if (GUIUtility.hotControl == controlID && current.keyCode == KeyCode.Escape){
 						foreach (Node node in _selection){
 							node.nodePos = _initialDragNodePosition [node];
-							EditorUtility.SetDirty (_selected as UnityEngine.Object);
 						}
+						EditorUtility.SetDirty (_selected as UnityEngine.Object);
 						GUIUtility.hotControl = 0;
 						current.Use ();
 					}
@@ -1137,11 +1136,32 @@ namespace AnyGraph{
 		}
 
 		private void CheckNodeLinks(){
-			foreach(Node n in _allNodes){
-				if(n.representedNode.Links.Count != n.links.Count){
+			for(int i = 0; i < _allNodes.Count; i++){
+				if(_allNodes[i].representedNode.Links.Count != _allNodes[i].links.Count){
+					Debug.Log ("Links did not match in a node, regenerating node map.");
 					GenerateCompleteNodeMap (_selected.Nodes);
 					return;
 				}
+			}
+		}
+
+		private void CheckNodes(){
+			List<IAnyGraphNode> selectedNodes = new List<IAnyGraphNode>();
+			selectedNodes.AddRange (_selected.Nodes);
+
+			for(int i = 0; i < _cachedNodes.Count; i++){
+				if(!selectedNodes.Contains (_cachedNodes[i])){
+					Debug.Log ("A node was removed, regenerating node map.");
+					GenerateCompleteNodeMap (_selected.Nodes);
+					return;
+				}
+
+				selectedNodes.Remove (_cachedNodes[i]);
+			}
+
+			if(selectedNodes.Count > 0){
+				Debug.Log ("A node was added, regenerating node map.");
+				GenerateCompleteNodeMap (_selected.Nodes);
 			}
 		}
 
@@ -1158,12 +1178,12 @@ namespace AnyGraph{
 		/// <param name="ySpacing">Y spacing.</param>
 		private IEnumerator RearrangeNodesAsTree(float xSpacing, float ySpacing, bool duplicateBranches = false){
 			yield return null;
-			for(int i = 0; i < _allNodes.Count; i++){
+			/*for(int i = 0; i < _allNodes.Count; i++){
 				if(_allNodes[i] != null && _allNodes[i].representedNode.IsNodeRedundant()){
 					Debug.LogWarning ("There is a redundancy in the graph. Aborting tree graphing.");
 					yield break;
 				}
-			}
+			}*/
 
 			List<List<Node>> allNodeLevels = new List<List<Node>>();
 			List<Node> rootNodes = new List<Node>();
@@ -1254,13 +1274,20 @@ namespace AnyGraph{
 			private bool _collapsed = false;
 			public bool _active = false;
 
-			public List<Node> SetupRecursively(){
+			public List<Node> SetupRecursively(List<IAnyGraphNode> parents){
 				List<Node> linked = new List<Node>();
 				if(representedNode == null){
 					return linked;
 				}
-				foreach(AnyGraphLink link in representedNode.Links){
-					if(link.connection != null){
+
+				List<IAnyGraphNode> nextParents = new List<IAnyGraphNode>();
+				nextParents.AddRange (parents);
+				nextParents.Add (representedNode);
+
+				for(int i = 0; i < representedNode.Links.Count; i++){
+					AnyGraphLink link = representedNode.Links[i];
+
+					if(link.connection != null && !nextParents.Contains (link.connection)){
 						Node newNode = new Node(){
 							representedNode = link.connection,
 							isRoot = false,
@@ -1274,7 +1301,7 @@ namespace AnyGraph{
 							guid = newNode.guid
 						});
 						linked.Add (newNode);
-						linked.AddRange (newNode.SetupRecursively ());
+						linked.AddRange (newNode.SetupRecursively (nextParents));
 					}
 					else{
 						links.Add (new Link(){
@@ -1309,9 +1336,13 @@ namespace AnyGraph{
 				heightExtent = 0;
 
 				if(!Collapsed){
-					foreach(Link l in links.Where (x => x.TargetNode != null)){
-						l.TargetNode.UpdateChildBlocks(yStep);
-						heightExtent += l.TargetNode.heightExtent;
+					for(int i = 0; i < links.Count; i++){
+						if(links[i].TargetNode == null){
+							continue;
+						}
+
+						links[i].TargetNode.UpdateChildBlocks(yStep);
+						heightExtent += links[i].TargetNode.heightExtent;
 						extentCount++;
 					}
 				}
