@@ -7,6 +7,10 @@ using System.Collections.Generic;
 /// Interface to attach on a class to make it graphable.
 /// </summary>
 public interface IAnyGraphable{
+	/// <summary>
+	/// Gets the name the root node that should be used.
+	/// </summary>
+	/// <value>The name of the explicit root node.</value>
 	string ExplicitRootNodeName{get;}
 
 	/// <summary>
@@ -22,7 +26,7 @@ public interface IAnyGraphable{
 	/// Return true if the gui needs repainting.
 	/// </returns>
 	/// <param name='n'>Node to draw.</param>
-	bool DrawNode(IAnyGraphNode n);
+	void DrawNode(IAnyGraphNode n);
 	
 	/// <summary>
 	/// Any code in this will be drawn by the editor window.
@@ -43,5 +47,9 @@ public interface IAnyGraphable{
 	/// <param name="n2">Node 2.</param>
 	void DisconnectNodes(UnityEngine.Object n1, UnityEngine.Object n2);
 
+	/// <summary>
+	/// Gets the active node path.
+	/// </summary>
+	/// <value>The active node path.</value>
 	string[] ActiveNodePath{get;}
 }

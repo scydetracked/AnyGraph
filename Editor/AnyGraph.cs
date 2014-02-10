@@ -33,8 +33,6 @@ namespace AnyGraph{
 		private Vector2 _optionWindowScrollPos = new Vector2();
 		private bool _showOptionsGraphSettings = false;
 
-
-		// Non anygraph specific.
 		private Dictionary<Node, Rect> _initialDragNodePosition = new Dictionary<Node, Rect>();
 		private List<Rect> _allNodePos = new List<Rect>();
 		private List<IAnyGraphNode> _cachedNodes = new List<IAnyGraphNode>();
@@ -42,7 +40,6 @@ namespace AnyGraph{
 		private bool _linkingNode = false;
 		private Node _nodeToLink = null;
 
-		// New Node & Link systems
 		private static List<Node> _allNodes = new List<Node>();
 		private List<Node> _selection = new List<Node>();
 		private List<Node> _oldSelection = new List<Node>();
@@ -52,11 +49,18 @@ namespace AnyGraph{
 		private bool _needRearrange = false;
 		private IEnumerator _rearrange;
 	
+		private const string _settingsPath = "Assets/AnyGraphSettings.asset";
 		private AnyGraphSettings _loadedSettings;
 		private AnyGraphSettings SelectedSettings{
 			get{
-				if(_loadedSettings == null){
-					_loadedSettings = ScriptableObject.CreateInstance<AnyGraphSettings>();
+				if(_loadedSettings == null || _loadedSettings.SettingsType != _selected.GetType ()){
+					AnyGraphSavedSettings savedSettings = AssetDatabase.LoadAssetAtPath (_settingsPath, typeof(AnyGraphSavedSettings)) as AnyGraphSavedSettings;
+					if(savedSettings == null){
+						savedSettings = ScriptableObject.CreateInstance<AnyGraphSavedSettings>();
+						AssetDatabase.CreateAsset (savedSettings, _settingsPath);
+					}
+
+					_loadedSettings = savedSettings.GetSettings (_selected.GetType ());
 				}
 
 				return _loadedSettings;
@@ -70,10 +74,6 @@ namespace AnyGraph{
 
 		private void OnEnable(){
 			Reset ();
-		}
-
-		private List<AnyGraphSettings> LoadSettings(){
-			return new List<AnyGraphSettings>();
 		}
 
 		private Vector2 ConvertScreenCoordsToZoomCoords(Vector2 screenCoords){
@@ -99,20 +99,20 @@ namespace AnyGraph{
 
 			_optionWindowRect = new Rect();
 			_optionWindowScrollPos = new Vector2();
-			
-			
-			// Non anygraph specific.
+
 			_initialDragNodePosition.Clear ();
 			_allNodePos.Clear ();
 			_cachedNodes.Clear ();
 			_selected = null;
 			_linkingNode = false;
 			_nodeToLink = null;
-			
-			// New Node & Link systems
+
 			_allNodes.Clear ();
 			_selection.Clear ();
 			_oldSelection.Clear ();
+
+			_needRearrange = false;
+			_rearrange = null;
 
 			System.GC.Collect ();
 		}
@@ -129,25 +129,29 @@ namespace AnyGraph{
 				float oldZoom = _zoom;
 				_zoom += zoomDelta;
 				_zoom = Mathf.Clamp(_zoom, kZoomMin, kZoomMax);
-				_zoomCoordsOrigin += (zoomCoordsMousePos - _zoomCoordsOrigin) - (oldZoom / _zoom) * (zoomCoordsMousePos - _zoomCoordsOrigin);
+
+				Vector2 toAdd = (zoomCoordsMousePos - _zoomCoordsOrigin) - (oldZoom / _zoom) * (zoomCoordsMousePos - _zoomCoordsOrigin);
+				scrollPos += toAdd;
+				_zoomCoordsOrigin += toAdd;
 				
-				Event.current.Use();
+				Event.current.Use ();
 			}
 
 			if(_linkingNode && Event.current.type == EventType.MouseDown && Event.current.button == 1){
 				_linkingNode = false;
 				_nodeToLink = null;
+				Event.current.Use ();
 			}
 
 			if(Event.current.modifiers == EventModifiers.Control){
 				switch(Event.current.keyCode){
-				case KeyCode.Alpha0:
+				case KeyCode.Alpha0:	// Reset zoom
 					_zoom = 1;
 					break;
-				case KeyCode.Equals:
+				case KeyCode.Equals:	// Zoom-in
 					_zoom += 0.05f;
 					break;
-				case KeyCode.Minus:
+				case KeyCode.Minus:		// Zoom-out
 					_zoom -= 0.05f;
 					break;
 				}
@@ -156,6 +160,10 @@ namespace AnyGraph{
 			}
 		}
 
+		/// <summary>
+		/// Updates the GUI. Base GUI update is 100 times per frame.
+		/// Throttling the update to 25 per frame.
+		/// </summary>
 		private void Update(){
 			if(_updateThrottler%4 == 0){
 				Repaint ();
@@ -163,6 +171,10 @@ namespace AnyGraph{
 			_updateThrottler = _updateThrottler++%10000;
 		}
 
+		/// <summary>
+		/// Generates a complete node map to be used by the graph.
+		/// </summary>
+		/// <param name="nodes">Nodes to generate a map for.</param>
 		private void GenerateCompleteNodeMap(List<IAnyGraphNode> nodes){
 			_cachedNodes = nodes;
 			_allNodes = new List<Node>();
@@ -215,80 +227,79 @@ namespace AnyGraph{
 				_optionWindowRect = new Rect(position.width - 30, 0, 30, position.height);
 			}
 
-			HandleEvents ();
-			_zoomArea = new Rect(0, 0, position.width - _optionWindowRect.width, position.height);
-			List<MonoBehaviour> availableToDraw = new List<MonoBehaviour>();
-			if(Selection.activeGameObject != null){
-			 availableToDraw = Selection.activeGameObject.GetComponents<MonoBehaviour>().Where(x => (x is IAnyGraphable)).ToList();
-			}
+			// Draw the grid and background.
+			GUI.Box (new Rect(0, 0, position.width, position.height), "", UnityEditor.Graphs.Styles.graphBackground);
+			DrawGrid ();
 
-			// Change the selected object if it can be drawn.
+			_zoomArea = new Rect(0, 0, position.width - _optionWindowRect.width, position.height);
+
+			// If it isn't a repaint event, we can modify the node and links.
 			if(Event.current.type != EventType.Repaint){
-				if((_selected == null || _selected != Selection.activeObject as IAnyGraphable) && Selection.activeObject is IAnyGraphable){
-					Reset ();
-					_selected = Selection.activeObject as IAnyGraphable;
-					Debug.Log ("Changed Selection, regenerating node map.");
-					GenerateCompleteNodeMap (_selected.Nodes);
-					Repaint ();
+				// Update the currently selected object.
+				IAnyGraphable newSelected = null;
+
+				if(Selection.activeObject is IAnyGraphable){
+					newSelected = Selection.activeObject as IAnyGraphable;
 				}
-				else if(availableToDraw.Count > 0){
-					for(int i = 0; i < availableToDraw.Count; i++){
-						if(availableToDraw[i] != null && availableToDraw[i] as IAnyGraphable != _selected){
-							Reset ();
-							_selected = Selection.activeGameObject.GetComponents<MonoBehaviour>().Where(x => (x is IAnyGraphable)).ToArray ()[0] as IAnyGraphable;
-							Debug.Log ("Changed Selection(2), regenerating node map.");
-							GenerateCompleteNodeMap (_selected.Nodes);
-							Repaint ();
+				else if(Selection.activeGameObject != null){
+					MonoBehaviour[] behaviours = Selection.activeGameObject.GetComponents<MonoBehaviour>();
+					for(int i = 0; i < behaviours.Length; i++){
+						if(behaviours[i] is IAnyGraphable){
+							newSelected = behaviours[i] as IAnyGraphable;
 						}
 					}
 				}
-			}
-			/*else if(Selection.activeObject != null && Selection.activeObject is GameObject && Selection.activeGameObject.GetComponent<MonoBehaviour>().w != (_selected as Component).gameObject){
-				// Grab all IAnyGraphable instances on the selected object.
-				availableToDraw = Selection.activeGameObject.GetComponents<MonoBehaviour>().Where (x => x is IAnyGraphable).ToList ();
-				if(availableToDraw.Count == 1){
-					_selected = availableToDraw[0] as IAnyGraphable;
-				}
-				else if(availableToDraw.Count > 0){
-					_selected = availableToDraw[0] as IAnyGraphable;
-					// TODO: Draw a selection box for user to choose which instance to draw.
-				}
-				GenerateCompleteNodeMap (_selected.Nodes);
-			}*/
 
-			// Draw Background and grid.
-			GUI.Box (new Rect(0, 0, position.width, position.height), "", UnityEditor.Graphs.Styles.graphBackground);
-			DrawGrid ();
-			
-			if(_selected == null){
-				string text = "Graph is null, cannot draw";
-				Rect textSize = GUILayoutUtility.GetRect (new GUIContent(text), "Button");
-				GUI.Label (new Rect((position.width / 2) - (textSize.width / 2), (position.height / 2) - (textSize.height / 2), textSize.width, textSize.height), text, "Button");
-				Reset ();
-				return;
-			}
-			else if((_selected as UnityEngine.Component) == null){
-				_selected = null;
-				Reset ();
-				return;
-			}
-
-			if(Event.current.type != EventType.Repaint){
-				if(_rearrange != null){
-					if(!_rearrange.MoveNext ()){
-						_rearrange = null;
-					}
+				// If the selected object has changed, we need to regraph.
+				if(newSelected != _selected && newSelected != null){
+					Reset ();
+					_selected = newSelected;
+					GenerateCompleteNodeMap (_selected.Nodes);
 				}
-				else{
+
+				if(_selected != null){
 					CheckNodes ();
 					CheckNodeLinks ();
 
-					if(_needRearrange){
-						RearrangeTree(SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y, true);
+					// Move to the next rearrange iteration if it isn't null.
+					if(_rearrange != null){
+						if(!_rearrange.MoveNext ()){
+							_rearrange = null;
+						}
+					}
+					// Start a new rearrange if the instance was null and the graph needs rearranging.
+					else if(_needRearrange){
+						RearrangeTree(SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 					}
 				}
 			}
+			
+			HandleEvents ();
 
+			// if there is nothing to draw.
+			if(_selected == null){
+				ShowNotification (new GUIContent("Graph is null.\nCannot draw."));
+				return;
+			}
+			else{
+				RemoveNotification ();
+			}
+
+			Rect scrollViewRect = EditorZoomArea.Begin (_zoom, new Rect(0, 0, position.width - _optionWindowRect.width, position.height));
+			scrollViewRect.y -= 21;
+
+			if(scrollViewRect.width > _graphExtents.width){
+				scrollPos.x += (scrollViewRect.width - _graphExtents.width) / 2;
+			}
+
+			if(scrollViewRect.height > _graphExtents.height){
+				scrollPos.y += (scrollViewRect.height - _graphExtents.height) / 2;
+			}
+
+			scrollPos = GUI.BeginScrollView (scrollViewRect, scrollPos, _graphExtents, GUIStyle.none, GUIStyle.none);
+
+			// Get the current active path from the selected IAnyGraphable.
+			// Recursively set active nodes.
 			string[] activePath = _selected.ActiveNodePath;
 			if(activePath.Length > 0){
 				for(int i = 0; i < _allNodes.Count; i++){
@@ -298,10 +309,6 @@ namespace AnyGraph{
 					}
 				}
 			}
-
-			Rect scrollViewRect = EditorZoomArea.Begin (_zoom, new Rect(0, 0, position.width - _optionWindowRect.width, position.height));
-			scrollViewRect.y -= 21;
-			scrollPos = GUI.BeginScrollView (scrollViewRect, scrollPos, _graphExtents, GUIStyle.none, GUIStyle.none);
 
 			DrawLinks ();
 			DrawNodes ();
@@ -314,12 +321,14 @@ namespace AnyGraph{
 			GUI.EndScrollView();
 			EditorZoomArea.End ();
 
-			// Options window.
-			if(DrawOptionsWindow()){
-				Repaint ();
-			}
+			DrawOptionsWindow();
 		}
 
+		#region Drawing Functions
+		/// <summary>
+		/// Draw the context menu for a single node.
+		/// </summary>
+		/// <param name="n">Node to draw.</param>
 		private void DrawContextMenu(Node n){
 			GenericMenu menu = new GenericMenu();
 			if(n.Collapsed){
@@ -334,13 +343,17 @@ namespace AnyGraph{
 					RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 				});
 			}
-
+			
 			Vector2 mousePos = Event.current.mousePosition - _zoomCoordsOrigin + (_zoomCoordsOrigin * _zoom);// - new Vector2(n.nodePos.x, n.nodePos.y);
 			menu.DropDown (new Rect(mousePos.x, mousePos.y, 0, 0));
-
+			
 			//menu.ShowAsContext ();
 		}
 
+		/// <summary>
+		/// Draw the context menu for multiple nodes.
+		/// </summary>
+		/// <param name="n">Nodes to draw.</param>
 		private void DrawContextMenu(Node[] n){
 			GenericMenu menu = new GenericMenu();
 			menu.AddItem (new GUIContent("Expand Multiple"), false, delegate() {
@@ -349,7 +362,7 @@ namespace AnyGraph{
 				}
 				RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 			});
-
+			
 			menu.AddItem (new GUIContent("Collapse Multiple"), false, delegate() {
 				for(int i = 0; i < n.Length; i++){
 					n[i].Collapsed = true;
@@ -359,16 +372,14 @@ namespace AnyGraph{
 			
 			Vector2 mousePos = (Event.current.mousePosition);
 			menu.DropDown (new Rect(mousePos.x, mousePos.y, 0, 0));
-
+			
 			menu.ShowAsContext ();
 		}
 
-		#region Drawing Functions
 		/// <summary>
 		/// Draws the options window. All custom drawing from IAnyGraphable will be called in here as well.
 		/// </summary>
-		/// <returns><c>true</c>, if Repaint() should be called, <c>false</c> otherwise.</returns>
-		private bool DrawOptionsWindow(){
+		private void DrawOptionsWindow(){
 			GUI.Box (_optionWindowRect, GUIContent.none);
 			GUILayout.BeginArea (_optionWindowRect);
 			if(!_optionWindowOpen){
@@ -383,38 +394,27 @@ namespace AnyGraph{
 					RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 				}
 
-				if(GUILayout.Button ("Force Refresh")){
-					Reset ();
-					_needRearrange = true;
-					return false;
-					//GenerateCompleteNodeMap (_selected.Nodes);
-				}
-
 				// Buttons for manual linking/unlinking.
 				if(SelectedSettings.allowNodeLinking && _selection.Count == 2){
 					if(_selection[0].representedNode.Links.Select (x => x.connection).Contains (_selection[1].representedNode)){
 						if(GUILayout.Button (string.Format("Disconnect '{0}' --X--> '{1}'", _selection[0].representedNode.Name, _selection[1].representedNode.Name))){
 							_selected.DisconnectNodes (_selection[0].representedNode.EditorObj, _selection[1].representedNode.EditorObj);
-							return true;
 						}
 					}
 					else{
 						if(GUILayout.Button (string.Format("Connect '{0}' -----> '{1}'", _selection[0].representedNode.Name, _selection[1].representedNode.Name))){
 							_selected.ConnectNodes (_selection[0].representedNode.EditorObj, _selection[1].representedNode.EditorObj);
-							return true;
 						}
 					}
 					
 					if(_selection[1].representedNode.Links.Select (x => x.connection).Contains (_selection[0].representedNode)){
 						if(GUILayout.Button (string.Format("Disconnect '{0}' --X--> '{1}'", _selection[1].representedNode.Name, _selection[0].representedNode.Name))){
 							_selected.DisconnectNodes (_selection[1].representedNode.EditorObj, _selection[0].representedNode.EditorObj);
-							return true;
 						}
 					}
 					else{
 						if(GUILayout.Button (string.Format("Connect '{0}' ----> '{1}'", _selection[1].representedNode.Name, _selection[0].representedNode.Name))){
 							_selected.ConnectNodes (_selection[1].representedNode.EditorObj, _selection[0].representedNode.EditorObj);
-							return true;
 						}
 					}
 				}
@@ -454,7 +454,7 @@ namespace AnyGraph{
 				_selected.AdditionalOptionsGUI ();
 				
 				// Consume the event.
-				if(Event.current.type == EventType.MouseDown){
+				if(Event.current.type == EventType.MouseDown || Event.current.type == EventType.mouseUp){
 					Event.current.Use ();
 				}
 
@@ -466,8 +466,6 @@ namespace AnyGraph{
 				}
 			}
 			GUILayout.EndArea ();
-
-			return false;
 		}
 
 		/// <summary>
@@ -564,7 +562,7 @@ namespace AnyGraph{
 		private void DrawNodes(){
 			BeginWindows ();
 	
-			_allNodePos = new List<Rect>();
+			_allNodePos.Clear ();
 			foreach(Node n in _allNodes){
 				if(n.parentNode == null || !n.parentNode.Collapsed){
 					DrawNode (n);
@@ -625,7 +623,7 @@ namespace AnyGraph{
 					_linkingNode = true;
 				}
 
-				bool repaint = _selected.DrawNode (node.representedNode);
+				_selected.DrawNode (node.representedNode);
 
 				for(int i = 0; i < node.links.Count; i++){
 					GUILayout.Label (node.links[i].linkName);
@@ -639,10 +637,6 @@ namespace AnyGraph{
 					if(lastRect.y + (lastRect.height / 2) > 1){
 						node.links[i].SetOffset (lastRect.y + (lastRect.height / 2));
 					}
-				}
-
-				if(repaint){
-					Repaint();
 				}
 
 				DragNodes ();
@@ -683,21 +677,8 @@ namespace AnyGraph{
 			Vector3[] points;
 			Vector3[] tangents;
 
-			if(SelectedSettings.useCurvedConnectors){
-				GetCurvyConnectorValues (startPos, endPos, out points, out tangents);
-		        Handles.DrawBezier(points[0], points[1], tangents[0], tangents[1], linkColor, (Texture2D)UnityEditor.Graphs.Styles.connectionTexture.image, SelectedSettings.linkWidth);
-			}
-			else{
-				Handles.DrawBezier (startPos, endPos, endPos, startPos, linkColor, (Texture2D)UnityEditor.Graphs.Styles.connectionTexture.image, SelectedSettings.linkWidth);
-			}
-			
-			
-			// Good for connecting where direction is unimportant. But need a solution to show direction.
-			/*startPos.y = start.y + start.height / 2;
-			endPos.y = end.y + end.height / 2;
-			GetAngularConnectorValues (startPos, endPos, out points, out tangents);
-			DrawRoundedPolyLine (points, tangents, (Texture2D)UnityEditor.Graphs.Styles.connectionTexture.image, _selected._settings._linkColor);*/
-			//Handles.DrawBezier (startPos, endPos, startPos, endPos, _selected._settings._linkColor, null, _selected._settings._linkWidth);
+			GetCurvyConnectorValues (startPos, endPos, out points, out tangents);
+	        Handles.DrawBezier(points[0], points[1], tangents[0], tangents[1], linkColor, (Texture2D)UnityEditor.Graphs.Styles.connectionTexture.image, SelectedSettings.linkWidth);
 		}
 		#endregion
 
@@ -792,8 +773,6 @@ namespace AnyGraph{
 				}
 				case EventType.MouseUp:{
 					if (GUIUtility.hotControl == controlID){
-						EditorUtility.SetDirty (_selected as UnityEngine.Object);
-
 						_initialDragNodePosition.Clear ();
 						_graphExtents = GetGraphExtents ();
 						GUIUtility.hotControl = 0;
@@ -811,8 +790,6 @@ namespace AnyGraph{
 						
 							node.nodePos = newPosition;
 						}
-					
-						EditorUtility.SetDirty (_selected as UnityEngine.Object);
 					}
 					break;
 				}
@@ -821,7 +798,6 @@ namespace AnyGraph{
 						foreach (Node node in _selection){
 							node.nodePos = _initialDragNodePosition [node];
 						}
-						EditorUtility.SetDirty (_selected as UnityEngine.Object);
 						GUIUtility.hotControl = 0;
 						current.Use ();
 					}
@@ -856,7 +832,7 @@ namespace AnyGraph{
 				}
 				case EventType.MouseMove:
 				case EventType.MouseDrag:{
-					if (GUIUtility.hotControl == controlID){
+				if (GUIUtility.hotControl == controlID){
 					Vector2 delta = current.delta;
 					if((delta.x < 0 && position.width - _optionWindowRect.width + scrollPos.x + _graphExtents.xMin - delta.x > _graphExtents.xMax) ||
 					   (delta.x > 0 && scrollPos.x + _graphExtents.xMin - delta.x < _graphExtents.xMin)){
@@ -1054,7 +1030,7 @@ namespace AnyGraph{
 					extents.yMax = _allNodePos[i].yMax;
 				}
 			}
-			
+
 			extents.xMax += 100;
 			extents.yMax += 100;
 			
@@ -1076,7 +1052,7 @@ namespace AnyGraph{
 			if(extents.yMin > scrollPos.y + extents.yMin){
 				extents.yMin = scrollPos.y + extents.yMin;
 			}
-			
+
 			return extents;
 		}
 
@@ -1116,25 +1092,9 @@ namespace AnyGraph{
 			}
 		}
 
-		// TODO: Finish implementing a method of adding new nodes and links to the nodemap.
-		private void UpdateNodes(){
-			if(_selected == null){
-				return;
-			}
-			List<IAnyGraphNode> nodes = _selected.Nodes;
-			foreach(IAnyGraphNode node in nodes){
-				if(!_allNodes.Select (x => x.representedNode).Contains(node)){
-					Node newNode = new Node(){
-						representedNode = node,
-						isRoot = false,
-						guid = System.Guid.NewGuid ().ToString (),
-						links = new List<Link>(),
-						nodePos = new Rect()
-					};
-				}
-			}
-		}
-
+		/// <summary>
+		/// Checks each nodes to see if links have been added or removed.
+		/// </summary>
 		private void CheckNodeLinks(){
 			for(int i = 0; i < _allNodes.Count; i++){
 				if(_allNodes[i].representedNode.Links.Count != _allNodes[i].links.Count){
@@ -1145,6 +1105,7 @@ namespace AnyGraph{
 			}
 		}
 
+		// Checks cached nodes against the selected object's nodes.
 		private void CheckNodes(){
 			List<IAnyGraphNode> selectedNodes = new List<IAnyGraphNode>();
 			selectedNodes.AddRange (_selected.Nodes);
@@ -1165,9 +1126,15 @@ namespace AnyGraph{
 			}
 		}
 
-		private void RearrangeTree(float xSpacing, float ySpacing, bool duplicateBranches = false){
+		/// <summary>
+		/// Starts a new rearrange Enumerator.
+		/// </summary>
+		/// <param name="xSpacing">X spacing.</param>
+		/// <param name="ySpacing">Y spacing.</param>
+		private void RearrangeTree(float xSpacing, float ySpacing){
 			if(_rearrange == null){
-				_rearrange = RearrangeNodesAsTree (xSpacing, ySpacing, duplicateBranches);
+				_rearrange = RearrangeNodesAsTree (xSpacing, ySpacing);
+				_rearrange.MoveNext ();
 			}
 		}
 
@@ -1176,7 +1143,7 @@ namespace AnyGraph{
 		/// </summary>
 		/// <param name="xSpacing">X spacing.</param>
 		/// <param name="ySpacing">Y spacing.</param>
-		private IEnumerator RearrangeNodesAsTree(float xSpacing, float ySpacing, bool duplicateBranches = false){
+		private IEnumerator RearrangeNodesAsTree(float xSpacing, float ySpacing){
 			yield return null;
 			/*for(int i = 0; i < _allNodes.Count; i++){
 				if(_allNodes[i] != null && _allNodes[i].representedNode.IsNodeRedundant()){
