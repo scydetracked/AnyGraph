@@ -100,16 +100,16 @@ namespace AnyGraph{
 			_optionWindowRect = new Rect();
 			_optionWindowScrollPos = new Vector2();
 
-			_initialDragNodePosition.Clear ();
-			_allNodePos.Clear ();
-			_cachedNodes.Clear ();
+			_initialDragNodePosition = new Dictionary<Node, Rect>();
+			_allNodePos = new List<Rect>();
+			_cachedNodes = new List<Rect>();
 			_selected = null;
 			_linkingNode = false;
 			_nodeToLink = null;
 
-			_allNodes.Clear ();
-			_selection.Clear ();
-			_oldSelection.Clear ();
+			_allNodes = new List<Node>();
+			_selection = new List<Node>();
+			_oldSelection = new List<Node>();
 
 			_needRearrange = false;
 			_rearrange = null;
@@ -706,7 +706,7 @@ namespace AnyGraph{
 				}
 				else{
 					if (!_selection.Contains (n)){
-						_selection.Clear ();
+						_selection = new List<Node>();
 						_selection.Add (n);
 					}
 					HandleUtility.Repaint ();
@@ -715,7 +715,7 @@ namespace AnyGraph{
 			}
 			else if(current.type == EventType.MouseUp && current.button == 1){
 				if(!_selection.Contains (n)){
-					_selection.Clear ();
+					_selection = new List<Node>();
 					_selection.Add (n);
 				}
 				DrawContextMenu (_selection.ToArray ());
@@ -861,8 +861,8 @@ namespace AnyGraph{
 					}
 					GUIUtility.hotControl = controlID;
 					_dragStartPoint = current.mousePosition;
-					_oldSelection = new List<Node>(_selection);
-					_selection.Clear ();
+					_oldSelection = new List<Node>();
+					_selection = new List<Node>();
 					_dragType = SelectionDragType.pick;
 					current.Use ();
 				}
@@ -871,7 +871,7 @@ namespace AnyGraph{
 			case EventType.MouseUp:{
 				if (GUIUtility.hotControl == controlID){
 					GUIUtility.hotControl = 0;
-					_oldSelection.Clear ();
+					_oldSelection = new List<Node>();
 					this.UpdateUnitySelection ();
 					if(Selection.objects.Length == 0){
 						Selection.objects = new Object[1]{(_selected as MonoBehaviour).gameObject};
@@ -884,7 +884,7 @@ namespace AnyGraph{
 			case EventType.MouseDrag:{
 				if (GUIUtility.hotControl == controlID){
 					_dragType = SelectionDragType.Rect;
-					_selection.Clear ();
+					_selection = new List<Node>();
 					_selection = GetNodesInSelectionRect (GetRectBetweenPoints(_dragStartPoint, current.mousePosition));
 					current.Use ();
 				}
