@@ -50,20 +50,18 @@ namespace AnyGraph{
 		private IEnumerator _rearrange;
 	
 		private const string _settingsPath = "Assets/AnyGraphSettings.asset";
-		private AnyGraphSettings _loadedSettings;
+		private AnyGraphSavedSettings _loadedSettings;
 		private AnyGraphSettings SelectedSettings{
 			get{
-				if(_loadedSettings == null || _loadedSettings.SettingsType != _selected.GetType ()){
-					AnyGraphSavedSettings savedSettings = AssetDatabase.LoadAssetAtPath (_settingsPath, typeof(AnyGraphSavedSettings)) as AnyGraphSavedSettings;
-					if(savedSettings == null){
-						savedSettings = ScriptableObject.CreateInstance<AnyGraphSavedSettings>();
-						AssetDatabase.CreateAsset (savedSettings, _settingsPath);
+				if(_loadedSettings == null){
+					_loadedSettings = AssetDatabase.LoadAssetAtPath (_settingsPath, typeof(AnyGraphSavedSettings)) as AnyGraphSavedSettings;
+					if(_loadedSettings == null){
+						_loadedSettings = ScriptableObject.CreateInstance<AnyGraphSavedSettings>();
+						AssetDatabase.CreateAsset (_loadedSettings, _settingsPath);
 					}
-
-					_loadedSettings = savedSettings.GetSettings (_selected.GetType ());
 				}
 
-				return _loadedSettings;
+				return _loadedSettings.GetSettings (_selected.GetType ());
 			}
 		}
 
@@ -402,6 +400,7 @@ namespace AnyGraph{
 
 				// Foldout containing graph settings.
 				_showOptionsGraphSettings = EditorGUILayout.Foldout (_showOptionsGraphSettings, "AnyGraph Settings");
+				AnyGraphSettings oldSettings = SelectedSettings;
 				if(_showOptionsGraphSettings){
 					EditorGUI.indentLevel++;
 					SelectedSettings.nodePlacementOffset = EditorGUILayout.Vector2Field ("Auto-Placement Offset", SelectedSettings.nodePlacementOffset);
@@ -429,6 +428,10 @@ namespace AnyGraph{
 						EditorGUI.indentLevel--;
 					}
 					EditorGUI.indentLevel--;
+				}
+
+				if(oldSettings != SelectedSettings){
+					EditorUtility.SetDirty (_loadedSettings);
 				}
 
 				// Draw custom gui implemented by user.

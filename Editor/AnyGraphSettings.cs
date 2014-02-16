@@ -5,6 +5,7 @@ using System.Collections;
 /// Settings used by AnyGraph.
 /// </summary>
 namespace AnyGraph{
+	[System.Serializable]
 	public sealed class AnyGraphSettings {
 		public enum NodeColors{
 			Grey,
@@ -23,10 +24,10 @@ namespace AnyGraph{
 		}
 
 		public AnyGraphSettings(System.Type type){
-			SettingsType = type;
+			SettingsType = type.ToString ();
 		}
 
-		public System.Type SettingsType;
+		public string SettingsType;
 
 		/// <summary>
 		/// If set to true, the editor will allow connecting nodes together.
@@ -97,5 +98,62 @@ namespace AnyGraph{
 		/// The offset used by the editor when repositionning nodes.
 		/// </summary>
 		public Vector2 nodePlacementOffset = new Vector2(150, 30);
+
+		public static bool operator !=(AnyGraphSettings left, AnyGraphSettings right){return !(left == right);}
+		public static bool operator ==(AnyGraphSettings left, AnyGraphSettings right){
+			if(left != null && right == null){
+				return false;
+			}
+			else if(left == null && right != null){
+				return false;
+			}
+			else if(left.SettingsType != right.SettingsType){
+				return false;
+			}
+			else if(left.allowNodeLinking  != right.allowNodeLinking){
+				return false;
+			}
+			else if(left.structuringMode != right.structuringMode){
+				return false;
+			}
+			else if(left.linkWidth != right.linkWidth){
+				return false;
+			}
+			else if(left.baseLinkColor != right.baseLinkColor){
+				return false;
+			}
+			else if(left.colorToSelected != right.colorToSelected){
+				return false;
+			}
+			else if(left.colorFromSelected != right.colorFromSelected){
+				return false;
+			}
+			else if(left.selectedLinkColor != right.selectedLinkColor){
+				return false;
+			}
+			else if(left.fromLinkColor != right.fromLinkColor){
+				return false;
+			}
+			else if(left.toLinkColor != right.toLinkColor){
+				return false;
+			}
+			else if(left.selectedNodeColor != right.selectedNodeColor){
+				return false;
+			}
+			else if(left.toNodeColor != right.toNodeColor){
+				return false;
+			}
+			else if(left.fromNodeColor != right.fromNodeColor){
+				return false;
+			}
+			else if(left.drawLinkOnTop != right.drawLinkOnTop){
+				return false;
+			}
+			else if(left.nodePlacementOffset != right.nodePlacementOffset){
+				return false;
+			}
+
+			return true;
+		}
 	}
 }

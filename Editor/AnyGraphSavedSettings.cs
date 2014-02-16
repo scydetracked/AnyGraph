@@ -4,19 +4,22 @@ using System.Collections.Generic;
 
 namespace AnyGraph{
 	public class AnyGraphSavedSettings : ScriptableObject {
-		[SerializeField, HideInInspector] private List<AnyGraphSettings> allSettings;
+		[SerializeField] private AnyGraphSettings[] allSettings;
 
-		public AnyGraphSavedSettings(){allSettings = new List<AnyGraphSettings>();}
+		public AnyGraphSavedSettings(){allSettings = new AnyGraphSettings[0];}
 
 		public AnyGraphSettings GetSettings(System.Type type){
-			for(int i = 0; i < allSettings.Count; i++){
-				if(allSettings[i].SettingsType == type){
+			for(int i = 0; i < allSettings.Length; i++){
+				if(allSettings[i].SettingsType == type.ToString ()){
 					return allSettings[i];
 				}
 			}
 
+			List<AnyGraphSettings> settings = new List<AnyGraphSettings>(allSettings);
+
 			AnyGraphSettings newSettings = new AnyGraphSettings(type);
-			allSettings.Add (newSettings);
+			settings.Add (newSettings);
+			allSettings = settings.ToArray ();
 			UnityEditor.EditorUtility.SetDirty (this);
 			return newSettings;
 		}
