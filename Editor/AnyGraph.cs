@@ -102,7 +102,7 @@ namespace AnyGraph{
 
 			_initialDragNodePosition = new Dictionary<Node, Rect>();
 			_allNodePos = new List<Rect>();
-			_cachedNodes = new List<Rect>();
+			_cachedNodes = new List<IAnyGraphNode>();
 			_selected = null;
 			_linkingNode = false;
 			_nodeToLink = null;
