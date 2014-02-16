@@ -326,44 +326,25 @@ namespace AnyGraph{
 
 		#region Drawing Functions
 		/// <summary>
-		/// Draw the context menu for a single node.
-		/// </summary>
-		/// <param name="n">Node to draw.</param>
-		private void DrawContextMenu(Node n){
-			GenericMenu menu = new GenericMenu();
-			if(n.Collapsed){
-				menu.AddItem (new GUIContent("Expand"), false, delegate() {
-					n.Collapsed = false;
-					RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
-				});
-			}
-			else{
-				menu.AddItem (new GUIContent("Collapse"), false, delegate() {
-					n.Collapsed = true;
-					RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
-				});
-			}
-			
-			Vector2 mousePos = Event.current.mousePosition - _zoomCoordsOrigin + (_zoomCoordsOrigin * _zoom);// - new Vector2(n.nodePos.x, n.nodePos.y);
-			menu.DropDown (new Rect(mousePos.x, mousePos.y, 0, 0));
-			
-			//menu.ShowAsContext ();
-		}
-
-		/// <summary>
 		/// Draw the context menu for multiple nodes.
 		/// </summary>
 		/// <param name="n">Nodes to draw.</param>
 		private void DrawContextMenu(Node[] n){
 			GenericMenu menu = new GenericMenu();
-			menu.AddItem (new GUIContent("Expand Multiple"), false, delegate() {
+			menu.AddItem (new GUIContent("Debug/Set Breakpoint"), false, delegate() {
+				for(int i = 0; i < n.Length; i++){
+					n[i].breakpoint = true;
+				}
+			});
+
+			menu.AddItem (new GUIContent("Formating/Expand"), false, delegate() {
 				for(int i = 0; i < n.Length; i ++){
 					n[i].Collapsed = false;
 				}
 				RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 			});
 			
-			menu.AddItem (new GUIContent("Collapse Multiple"), false, delegate() {
+			menu.AddItem (new GUIContent("Formating/Collapse"), false, delegate() {
 				for(int i = 0; i < n.Length; i++){
 					n[i].Collapsed = true;
 				}
@@ -526,7 +507,7 @@ namespace AnyGraph{
 						continue;
 					}
 					Color linkColor = SelectedSettings.baseLinkColor;
-					if(n._active && l.TargetNode._active){
+					if(n.active && l.TargetNode.active){
 						linkColor = new Color(1, 0, 0, 1);
 					}
 					else if(SelectedSettings.colorFromSelected && _selection.Find (x => x.links.Contains (l)) != null &&
@@ -604,9 +585,13 @@ namespace AnyGraph{
 				nodeColor = (UnityEditor.Graphs.Styles.Color)(int)SelectedSettings.selectedNodeColor;
 			}
 
-			if(node._active){
+			if(node.active){
 				nodeColor = UnityEditor.Graphs.Styles.Color.Red;
-				node._active = false;
+				node.active = false;
+				if(node.breakpoint && !EditorApplication.isPaused && EditorApplication.isPlaying){
+					Debug.LogWarning (string.Format ("Debug breakpoint triggered by node \"{0}\".\nNode's path is \"{1}\"", node.representedNode.Name, node.NodePath));
+					Debug.Break ();
+				}
 			}
 
 			// Draw node.
@@ -617,6 +602,16 @@ namespace AnyGraph{
 			node.nodePos = GUILayout.Window (_allNodes.FindIndex (x => x.Equals(node)), node.nodePos, delegate{
 				float width = GUILayoutUtility.GetRect (new GUIContent(node.representedNode.Name), "Label").width;
 				SelectNode (node);
+
+				if(node.breakpoint){
+					GUI.color = Color.red;
+					GUILayout.FlexibleSpace ();
+					if(GUILayout.Button ("Breakpoint")){
+						node.breakpoint = false;
+					}
+					GUILayout.FlexibleSpace ();
+					GUI.color = Color.white;
+				}
 
 				if(SelectedSettings.allowNodeLinking && GUILayout.Button ("Link To...")){
 					_nodeToLink = node;
@@ -719,12 +714,11 @@ namespace AnyGraph{
 				this.UpdateUnitySelection ();
 			}
 			else if(current.type == EventType.MouseUp && current.button == 1){
-				if(_selection.Count > 1 && _selection.Contains (n)){
-					DrawContextMenu (_selection.ToArray ());
+				if(!_selection.Contains (n)){
+					_selection.Clear ();
+					_selection.Add (n);
 				}
-				else{
-					DrawContextMenu (n);
-				}
+				DrawContextMenu (_selection.ToArray ());
 			}
 		}
 
@@ -890,7 +884,8 @@ namespace AnyGraph{
 			case EventType.MouseDrag:{
 				if (GUIUtility.hotControl == controlID){
 					_dragType = SelectionDragType.Rect;
-					GetNodesInSelectionRect (GetRectBetweenPoints(_dragStartPoint, current.mousePosition));
+					_selection.Clear ();
+					_selection = GetNodesInSelectionRect (GetRectBetweenPoints(_dragStartPoint, current.mousePosition));
 					current.Use ();
 				}
 				break;
@@ -1081,15 +1076,16 @@ namespace AnyGraph{
 		/// Sets the selection to all nodes contained in the rect.
 		/// </summary>
 		/// <param name="r">The rect in which to look for nodes.</param>
-		private void GetNodesInSelectionRect(Rect r){
-			_selection.Clear ();
+		private List<Node> GetNodesInSelectionRect(Rect r){
+			List<Node> nodesInRect = new List<Node>();
 			foreach (Node current in _allNodes){
 				Rect position = current.nodePos;
 				
 				if (position.xMax >= r.x && position.x <= r.xMax && position.yMax >= r.y && position.y <= r.yMax){
-					_selection.Add (current);
+					nodesInRect.Add (current);
 				}
 			}
+			return nodesInRect;
 		}
 
 		/// <summary>
@@ -1239,7 +1235,9 @@ namespace AnyGraph{
 			public float heightExtent {get; private set;}
 			public Node parentNode;
 			private bool _collapsed = false;
-			public bool _active = false;
+			public bool active = false;
+			public bool breakpoint = false;
+			private string _nodePath = "";
 
 			public List<Node> SetupRecursively(List<IAnyGraphNode> parents){
 				List<Node> linked = new List<Node>();
@@ -1250,6 +1248,12 @@ namespace AnyGraph{
 				List<IAnyGraphNode> nextParents = new List<IAnyGraphNode>();
 				nextParents.AddRange (parents);
 				nextParents.Add (representedNode);
+
+				for(int i = 0; i < parents.Count; i++){
+					_nodePath += parents[i].Name + "/";
+				}
+
+				_nodePath += representedNode.Name;
 
 				for(int i = 0; i < representedNode.Links.Count; i++){
 					AnyGraphLink link = representedNode.Links[i];
@@ -1283,7 +1287,7 @@ namespace AnyGraph{
 
 			public void SetActiveRecursively(string[] activePath, int curLevel){
 				curLevel++;
-				_active = true;
+				active = true;
 
 				if(curLevel >= activePath.Length){
 					return;
@@ -1344,6 +1348,10 @@ namespace AnyGraph{
 						}
 					}
 				}
+			}
+
+			public string NodePath{
+				get{return _nodePath;}
 			}
 		}
 
