@@ -14,9 +14,4 @@ public struct AnyGraphLink {
 	/// The node to which it connects.
 	/// </summary>
 	public IAnyGraphNode connection;
-
-	/// <summary>
-	/// This value is used internally by AnyGraph. Changing it won't have any effect.
-	/// </summary>
-	public float yOffset;
 }
