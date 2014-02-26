@@ -367,10 +367,21 @@ namespace AnyGraph{
 			menu.AddItem (new GUIContent("Formating/Collapse"), false, delegate() {
 				for(int i = 0; i < n.Length; i++){
 					n[i].Collapsed = true;
+					n[i].nodePos.height = 0;
 				}
 				RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 			});
-			
+
+			KeyValuePair<string, System.Action<IAnyGraphNode>>[] customActions = _selected.ContextActions;
+			for(int i = 0; i < customActions.Length; i++){
+				int index = i;
+				menu.AddItem (new GUIContent(customActions[i].Key), false, delegate {
+					for(int j = 0; j < n.Length; j++){
+						customActions[index].Value(n[j].representedNode);
+					}
+				});
+			}
+
 			Vector2 mousePos = (Event.current.mousePosition);
 			menu.DropDown (new Rect(mousePos.x, mousePos.y, 0, 0));
 			
@@ -422,7 +433,6 @@ namespace AnyGraph{
 
 				// Foldout containing graph settings.
 				_showOptionsGraphSettings = EditorGUILayout.Foldout (_showOptionsGraphSettings, "AnyGraph Settings");
-				AnyGraphSettings oldSettings = SelectedSettings;
 				if(_showOptionsGraphSettings){
 					EditorGUI.indentLevel++;
 					SelectedSettings.nodePlacementOffset = EditorGUILayout.Vector2Field ("Auto-Placement Offset", SelectedSettings.nodePlacementOffset);
@@ -450,10 +460,6 @@ namespace AnyGraph{
 						EditorGUI.indentLevel--;
 					}
 					EditorGUI.indentLevel--;
-				}
-
-				if(oldSettings != SelectedSettings){
-					EditorUtility.SetDirty (_loadedSettings);
 				}
 
 				// Draw custom gui implemented by user.
@@ -638,24 +644,26 @@ namespace AnyGraph{
 					GUI.color = Color.white;
 				}
 
-				if(SelectedSettings.allowNodeLinking && GUILayout.Button ("Link To...")){
-					_nodeToLink = node;
-					_linkingNode = true;
-				}
-
-				_selected.DrawNode (node.representedNode);
-
-				for(int i = 0; i < node.links.Count; i++){
-					GUILayout.Label (node.links[i].linkName);
-					//Link temp = node.links[i];
-					Rect lastRect = GUILayoutUtility.GetLastRect ();
-					//temp.yOffset = lastRect.y + (lastRect.height / 2);
-					//node.links[i] = temp;
-					if(lastRect.width > width){
-						width = lastRect.width;
+				if(!node.Collapsed){
+					if(SelectedSettings.allowNodeLinking && GUILayout.Button ("Link To...")){
+						_nodeToLink = node;
+						_linkingNode = true;
 					}
-					if(lastRect.y + (lastRect.height / 2) > 1){
-						node.links[i].SetOffset (lastRect.y + (lastRect.height / 2));
+
+					_selected.DrawNode (node.representedNode);
+
+					for(int i = 0; i < node.links.Count; i++){
+						GUILayout.Label (node.links[i].linkName);
+						//Link temp = node.links[i];
+						Rect lastRect = GUILayoutUtility.GetLastRect ();
+						//temp.yOffset = lastRect.y + (lastRect.height / 2);
+						//node.links[i] = temp;
+						if(lastRect.width > width){
+							width = lastRect.width;
+						}
+						if(lastRect.y + (lastRect.height / 2) > 1){
+							node.links[i].SetOffset (lastRect.y + (lastRect.height / 2));
+						}
 					}
 				}
 

@@ -74,4 +74,6 @@ public interface IAnyGraphable{
 	/// </summary>
 	/// <value>The active node path.</value>
 	string[] ActiveNodePath{get;}
+
+	KeyValuePair<string, System.Action<IAnyGraphNode>>[] ContextActions{get;}
 }
