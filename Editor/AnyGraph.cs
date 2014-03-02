@@ -363,16 +363,37 @@ namespace AnyGraph{
 				}
 				RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 			});
-			
+
 			menu.AddItem (new GUIContent("Formating/Collapse"), false, delegate() {
 				for(int i = 0; i < n.Length; i++){
 					n[i].Collapsed = true;
-					n[i].nodePos.height = 0;
 				}
 				RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 			});
 
+			if(n.Length == 1){
+				menu.AddItem (new GUIContent("Formating/Collapse All But This"), false, delegate() {
+					Node current = n[0];
+					while(current.parentNode != null){
+						Node parent = current.parentNode;
+						for(int i = 0; i < parent.links.Count; i++){
+							if(!System.Object.ReferenceEquals (parent.links[i].TargetNode, current)){
+								parent.links[i].TargetNode.Collapsed = true;
+
+							}
+						}
+						current = parent;
+					}
+				});
+			}
+			else{
+				menu.AddDisabledItem (new GUIContent("Formating/Collapse All But This"));
+			}
+
 			KeyValuePair<string, System.Action<IAnyGraphNode>>[] customActions = _selected.ContextActions;
+			if(customActions.Length > 0){
+				menu.AddSeparator ("");
+			}
 			for(int i = 0; i < customActions.Length; i++){
 				int index = i;
 				menu.AddItem (new GUIContent(customActions[i].Key), false, delegate {
@@ -666,10 +687,16 @@ namespace AnyGraph{
 						}
 					}
 				}
+				else if(node.representedNode.Links.Count > 0){
+					Color oldColor = GUI.color;
+					GUI.color = Color.green;
+					GUILayout.Label ("Collapsed");
+					GUI.color = oldColor;
+				}
 
 				DragNodes ();
 			},
-			node.representedNode.Name + (node.Collapsed ? "\ncollapsed" : ""), UnityEditor.Graphs.Styles.GetNodeStyle ("node", nodeColor, _selection.Contains (node)));
+			node.representedNode.Name, UnityEditor.Graphs.Styles.GetNodeStyle ("node", nodeColor, _selection.Contains (node)));
 
 			_allNodePos.Add (node.nodePos);
 		}
@@ -1375,6 +1402,10 @@ namespace AnyGraph{
 				get{return _collapsed;}
 				set{
 					_collapsed = value;
+					if(value){
+						nodePos.height = 0;
+						nodePos.width = 0;
+					}
 					for(int i = 0; i < links.Count; i++){
 						if(links[i].TargetNode != null){
 							links[i].TargetNode.Collapsed = value;
