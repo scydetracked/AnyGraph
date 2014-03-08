@@ -44,16 +44,15 @@ namespace AnyGraph{
 		private Vector2 _nodeDragDistance = new Vector2();
 		private Vector2 _initMousePos = new Vector2();
 
-		private Vector2 scrollPos = new Vector2();
+		private Vector2 _scrollPos = new Vector2();
 		private Rect _graphExtents;
 		private Rect _lastGraphExtents;
 		private Vector2 _dragStartPoint;
 		private SelectionDragType _dragType = SelectionDragType.None;
 
 		private bool _optionWindowOpen = false;
-		private Rect _optionWindowRect;
+		private Rect _toolbarRect;
 		private Vector2 _optionWindowScrollPos = new Vector2();
-		private bool _showOptionsGraphSettings = false;
 
 		private Dictionary<Node, Rect> _initialDragNodePosition = new Dictionary<Node, Rect>();
 		private List<Rect> _allNodePos = new List<Rect>();
@@ -70,6 +69,8 @@ namespace AnyGraph{
 
 		private bool _needRearrange = false;
 		private IEnumerator _rearrange;
+
+		private Dictionary<string, Texture> textures = new Dictionary<string, Texture>();
 	
 		private const string _settingsPath = "Assets/AnyGraphSettings.asset";
 		private AnyGraphSavedSettings _loadedSettings;
@@ -93,6 +94,19 @@ namespace AnyGraph{
 		}
 
 		private void OnEnable(){
+			if(textures.Count == 0){
+				string[] texuresToAdd = new string[]{"Connect", "Disconnect", "Options", "Collapse", "Expand", "Refresh", "BreakPoint"};
+				
+				string assetPath = AssetDatabase.GetAssetPath(MonoScript.FromScriptableObject (this));
+				int endIndex = assetPath.LastIndexOf ("/");
+				assetPath = assetPath.Substring (0, endIndex + 1) + "EditorAssets/";
+
+				string proString = Application.HasProLicense () ? "_pro" : "";
+				for(int i = 0; i < texuresToAdd.Length; i++){
+					textures.Add (texuresToAdd[i], AssetDatabase.LoadAssetAtPath (assetPath + texuresToAdd[i] + proString + ".png", typeof(Texture)) as Texture);
+				}
+			}
+
 			Reset ();
 		}
 
@@ -111,13 +125,13 @@ namespace AnyGraph{
 			_nodeDragDistance = new Vector2();
 			_initMousePos = new Vector2();
 			
-			scrollPos = new Vector2();
+			_scrollPos = new Vector2();
 			_graphExtents = new Rect();
 			_lastGraphExtents = new Rect();
 			_dragStartPoint = new Vector2();
 			_dragType = SelectionDragType.None;
 
-			_optionWindowRect = new Rect();
+			_toolbarRect = new Rect();
 			_optionWindowScrollPos = new Vector2();
 
 			_initialDragNodePosition = new Dictionary<Node, Rect>();
@@ -151,7 +165,7 @@ namespace AnyGraph{
 				_zoom = Mathf.Clamp(_zoom, kZoomMin, kZoomMax);
 
 				Vector2 toAdd = (zoomCoordsMousePos - _zoomCoordsOrigin) - (oldZoom / _zoom) * (zoomCoordsMousePos - _zoomCoordsOrigin);
-				scrollPos += toAdd;
+				_scrollPos += toAdd;
 				_zoomCoordsOrigin += toAdd;
 				
 				Event.current.Use ();
@@ -239,19 +253,11 @@ namespace AnyGraph{
 		}
 
 		private void OnGUI(){
-			// Set the option window rect if it is open.
-			if(_optionWindowOpen){
-				_optionWindowRect = new Rect(position.width - 280, 0, 280, position.height);
-			}
-			else{
-				_optionWindowRect = new Rect(position.width - 30, 0, 30, position.height);
-			}
-
 			// Draw the grid and background.
 			GUI.Box (new Rect(0, 0, position.width, position.height), "", UnityEditor.Graphs.Styles.graphBackground);
 			DrawGrid ();
 
-			_zoomArea = new Rect(0, 0, position.width - _optionWindowRect.width, position.height);
+			_zoomArea = new Rect(0, 0, position.width - _toolbarRect.width, position.height);
 
 			// If it isn't a repaint event, we can modify the node and links.
 			if(Event.current.type != EventType.Repaint){
@@ -298,25 +304,25 @@ namespace AnyGraph{
 
 			// if there is nothing to draw.
 			if(_selected == null){
-				ShowNotification (new GUIContent("Graph is null.\nCannot draw."));
+				ShowNotification (new GUIContent("No graphable object\nselected."));
 				return;
 			}
 			else{
 				RemoveNotification ();
 			}
 
-			Rect scrollViewRect = EditorZoomArea.Begin (_zoom, new Rect(0, 0, position.width - _optionWindowRect.width, position.height));
+			Rect scrollViewRect = EditorZoomArea.Begin (_zoom, new Rect(0, 0, position.width - _toolbarRect.width, position.height));
 			scrollViewRect.y -= 21;
 
 			if(scrollViewRect.width > _graphExtents.width){
-				scrollPos.x += (scrollViewRect.width - _graphExtents.width) / 2;
+				_scrollPos.x += (scrollViewRect.width - _graphExtents.width) / 2;
 			}
 
 			if(scrollViewRect.height > _graphExtents.height){
-				scrollPos.y += (scrollViewRect.height - _graphExtents.height) / 2;
+				_scrollPos.y += (scrollViewRect.height - _graphExtents.height) / 2;
 			}
 
-			scrollPos = GUI.BeginScrollView (scrollViewRect, scrollPos, _graphExtents, GUIStyle.none, GUIStyle.none);
+			_scrollPos = GUI.BeginScrollView (scrollViewRect, _scrollPos, _graphExtents, GUIStyle.none, GUIStyle.none);
 
 			// Get the current active path from the selected IAnyGraphable.
 			// Recursively set active nodes.
@@ -341,7 +347,7 @@ namespace AnyGraph{
 			GUI.EndScrollView();
 			EditorZoomArea.End ();
 
-			DrawOptionsWindow();
+			DrawToolbar();
 		}
 
 		#region Drawing Functions
@@ -377,7 +383,7 @@ namespace AnyGraph{
 					while(current.parentNode != null){
 						Node parent = current.parentNode;
 						for(int i = 0; i < parent.links.Count; i++){
-							if(!System.Object.ReferenceEquals (parent.links[i].TargetNode, current)){
+							if(parent.links[i].TargetNode != null && !System.Object.ReferenceEquals (parent.links[i].TargetNode, current)){
 								parent.links[i].TargetNode.Collapsed = true;
 
 							}
@@ -412,74 +418,82 @@ namespace AnyGraph{
 		/// <summary>
 		/// Draws the options window. All custom drawing from IAnyGraphable will be called in here as well.
 		/// </summary>
-		private void DrawOptionsWindow(){
-			GUI.Box (_optionWindowRect, GUIContent.none);
-			GUILayout.BeginArea (_optionWindowRect);
-			if(!_optionWindowOpen){
-				if(GUI.Button (new Rect(0, 0, _optionWindowRect.width, _optionWindowRect.height), "O\nP\nE\nN\n\nO\nP\nT\nI\nO\nN\nS\n\nW\nI\nN\nD\nO\nW")){
-					_optionWindowOpen = true;
-				}
+		private void DrawToolbar(){
+			if(_optionWindowOpen){
+				_toolbarRect = new Rect(position.width - 322, 0, 322, position.height);
 			}
 			else{
-				_optionWindowScrollPos = GUILayout.BeginScrollView(_optionWindowScrollPos, GUILayout.MaxHeight (_optionWindowRect.height - 20));
+				_toolbarRect = new Rect(position.width - 42, 0, 42, position.height);
+			}
 
-				if(GUILayout.Button ("Structure")){
-					RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
+			GUI.Box (_toolbarRect, GUIContent.none);
+			GUILayout.BeginArea (_toolbarRect);
+			int offsetStep = 42;
+			int curOffset = -offsetStep;
+			if(SelectedSettings.allowNodeLinking){
+				if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Connect"], "Connect Selected Nodes Together."))){
+					// TODO: Implement node connecting here.
+					Debug.LogWarning ("Node connecting has not yet been implemented.");
 				}
+				if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Disconnect"], "Disconnect Selected Nodes."))){
+					// TODO: Implement node disconnecting here.
+					Debug.LogWarning ("Node disconnecting has not yet been implemented.");
+				}
+			}
+			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Collapse"], "Collapse Selected Nodes."))){
+				for(int i = 0; i < _selection.Count; i++){
+					_selection[i].Collapsed = true;
+				}
+				RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
+			}
+			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Expand"], "Expand Selected Nodes."))){
+				for(int i = 0; i < _selection.Count; i++){
+					_selection[i].Collapsed = false;
+				}
+				RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
+			}
+			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["BreakPoint"], "Toggle breakpoints on selected nodes."))){
+				for(int i = 0; i < _selection.Count; i++){
+					_selection[i].breakpoint = !_selection[i].breakpoint;
+					if(!_selection[i].breakpoint){
+						_selection[i].nodePos.height = 0;
+					}
+				}
+			}
+			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Refresh"], "Force The Graph To Refresh."))){
+				Reset ();
+			}
+			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Options"], "Open The Options WIndow."))){
+				_optionWindowOpen = !_optionWindowOpen;
+			}
 
-				// Buttons for manual linking/unlinking.
-				if(SelectedSettings.allowNodeLinking && _selection.Count == 2){
-					if(_selection[0].representedNode.Links.Select (x => x.connection).Contains (_selection[1].representedNode)){
-						if(GUILayout.Button (string.Format("Disconnect '{0}' --X--> '{1}'", _selection[0].representedNode.Name, _selection[1].representedNode.Name))){
-							_selected.DisconnectNodes (_selection[0].representedNode.EditorObj, _selection[1].representedNode.EditorObj);
-						}
-					}
-					else{
-						if(GUILayout.Button (string.Format("Connect '{0}' -----> '{1}'", _selection[0].representedNode.Name, _selection[1].representedNode.Name))){
-							_selected.ConnectNodes (_selection[0].representedNode.EditorObj, _selection[1].representedNode.EditorObj);
-						}
-					}
-					
-					if(_selection[1].representedNode.Links.Select (x => x.connection).Contains (_selection[0].representedNode)){
-						if(GUILayout.Button (string.Format("Disconnect '{0}' --X--> '{1}'", _selection[1].representedNode.Name, _selection[0].representedNode.Name))){
-							_selected.DisconnectNodes (_selection[1].representedNode.EditorObj, _selection[0].representedNode.EditorObj);
-						}
-					}
-					else{
-						if(GUILayout.Button (string.Format("Connect '{0}' ----> '{1}'", _selection[1].representedNode.Name, _selection[0].representedNode.Name))){
-							_selected.ConnectNodes (_selection[1].representedNode.EditorObj, _selection[0].representedNode.EditorObj);
-						}
-					}
-				}
+			GUI.BeginGroup (new Rect(42, 0, _toolbarRect.width - 42, _toolbarRect.height));
+			if(_optionWindowOpen){
+				_optionWindowScrollPos = GUILayout.BeginScrollView(_optionWindowScrollPos, GUILayout.MaxHeight (_toolbarRect.height - 20),GUILayout.MaxWidth (_toolbarRect.width - 42));
 
 				// Foldout containing graph settings.
-				_showOptionsGraphSettings = EditorGUILayout.Foldout (_showOptionsGraphSettings, "AnyGraph Settings");
-				if(_showOptionsGraphSettings){
-					EditorGUI.indentLevel++;
-					SelectedSettings.nodePlacementOffset = EditorGUILayout.Vector2Field ("Auto-Placement Offset", SelectedSettings.nodePlacementOffset);
-					SelectedSettings.structuringMode = (AnyGraphSettings.GraphOrganizingMode)EditorGUILayout.EnumPopup ("Placement Type", SelectedSettings.structuringMode);
-					SelectedSettings.allowNodeLinking = EditorGUILayout.Toggle ("Allow Node Linking", SelectedSettings.allowNodeLinking);
-					SelectedSettings.drawLinkOnTop = EditorGUILayout.Toggle ("Draw Links On Top", SelectedSettings.drawLinkOnTop);
-					SelectedSettings.linkWidth = EditorGUILayout.FloatField ("Link Width", SelectedSettings.linkWidth);
-					SelectedSettings.baseLinkColor = EditorGUILayout.ColorField ("Base Link Color", SelectedSettings.baseLinkColor);
-					SelectedSettings.selectedNodeColor = (AnyGraphSettings.NodeColors)EditorGUILayout.EnumPopup("Selected Node Color", SelectedSettings.selectedNodeColor);
-					SelectedSettings.selectedLinkColor = EditorGUILayout.ColorField ("Selected Link Color", SelectedSettings.selectedLinkColor);
+				SelectedSettings.nodePlacementOffset = EditorGUILayout.Vector2Field ("Auto-Placement Offset", SelectedSettings.nodePlacementOffset);
+				SelectedSettings.structuringMode = (AnyGraphSettings.GraphOrganizingMode)EditorGUILayout.EnumPopup ("Placement Type", SelectedSettings.structuringMode);
+				SelectedSettings.allowNodeLinking = EditorGUILayout.Toggle ("Allow Node Linking", SelectedSettings.allowNodeLinking);
+				SelectedSettings.drawLinkOnTop = EditorGUILayout.Toggle ("Draw Links On Top", SelectedSettings.drawLinkOnTop);
+				SelectedSettings.linkWidth = EditorGUILayout.FloatField ("Link Width", SelectedSettings.linkWidth);
+				SelectedSettings.baseLinkColor = EditorGUILayout.ColorField ("Base Link Color", SelectedSettings.baseLinkColor);
+				SelectedSettings.selectedNodeColor = (AnyGraphSettings.NodeColors)EditorGUILayout.EnumPopup("Selected Node Color", SelectedSettings.selectedNodeColor);
+				SelectedSettings.selectedLinkColor = EditorGUILayout.ColorField ("Selected Link Color", SelectedSettings.selectedLinkColor);
 
-					EditorGUILayout.Space ();
-					SelectedSettings.colorFromSelected = EditorGUILayout.Toggle ("Color Links From Selected", SelectedSettings.colorFromSelected);
-					if(SelectedSettings.colorFromSelected){
-						EditorGUI.indentLevel++;
-						SelectedSettings.fromNodeColor = (AnyGraphSettings.NodeColors)EditorGUILayout.EnumPopup("Selected Node Color", SelectedSettings.fromNodeColor);
-						SelectedSettings.fromLinkColor = EditorGUILayout.ColorField ("From Link Color", SelectedSettings.fromLinkColor);
-						EditorGUI.indentLevel--;
-					}
-					SelectedSettings.colorToSelected = EditorGUILayout.Toggle ("Color Links To Selected", SelectedSettings.colorToSelected);
-					if(SelectedSettings.colorToSelected){
-						EditorGUI.indentLevel++;
-						SelectedSettings.toNodeColor = (AnyGraphSettings.NodeColors)EditorGUILayout.EnumPopup("Selected Node Color", SelectedSettings.toNodeColor);
-						SelectedSettings.toLinkColor = EditorGUILayout.ColorField ("To Link Color", SelectedSettings.toLinkColor);
-						EditorGUI.indentLevel--;
-					}
+				EditorGUILayout.Space ();
+				SelectedSettings.colorFromSelected = EditorGUILayout.Toggle ("Color Links From Selected", SelectedSettings.colorFromSelected);
+				if(SelectedSettings.colorFromSelected){
+					EditorGUI.indentLevel++;
+					SelectedSettings.fromNodeColor = (AnyGraphSettings.NodeColors)EditorGUILayout.EnumPopup("Selected Node Color", SelectedSettings.fromNodeColor);
+					SelectedSettings.fromLinkColor = EditorGUILayout.ColorField ("From Link Color", SelectedSettings.fromLinkColor);
+					EditorGUI.indentLevel--;
+				}
+				SelectedSettings.colorToSelected = EditorGUILayout.Toggle ("Color Links To Selected", SelectedSettings.colorToSelected);
+				if(SelectedSettings.colorToSelected){
+					EditorGUI.indentLevel++;
+					SelectedSettings.toNodeColor = (AnyGraphSettings.NodeColors)EditorGUILayout.EnumPopup("Selected Node Color", SelectedSettings.toNodeColor);
+					SelectedSettings.toLinkColor = EditorGUILayout.ColorField ("To Link Color", SelectedSettings.toLinkColor);
 					EditorGUI.indentLevel--;
 				}
 
@@ -492,12 +506,8 @@ namespace AnyGraph{
 				}
 
 				GUILayout.EndScrollView();
-
-				// Options close button.
-				if(GUI.Button (new Rect(0, _optionWindowRect.height - 20, _optionWindowRect.width, 20), "Close Options Window")){
-					_optionWindowOpen = false;
-				}
 			}
+			GUI.EndGroup ();
 			GUILayout.EndArea ();
 		}
 
@@ -524,7 +534,7 @@ namespace AnyGraph{
 		/// <param name="gridSize">Line spacing.</param>
 		/// <param name="gridColor">Line color.</param>
 		private void DrawGridLines (float gridSize, Color gridColor){
-			Rect extents = new Rect(-50, -50, position.width + 100, position.height + 100);
+			Rect extents = new Rect(0, 0, position.width - _toolbarRect.width, position.height);
 			
 			GL.Color (gridColor);
 			for (float num = extents.xMin - extents.xMin % gridSize; num < extents.xMax; num += gridSize){
@@ -660,12 +670,14 @@ namespace AnyGraph{
 					GUILayout.FlexibleSpace ();
 					if(GUILayout.Button ("Breakpoint")){
 						node.breakpoint = false;
+						node.nodePos.height = 0;
 					}
 					GUILayout.FlexibleSpace ();
 					GUI.color = Color.white;
 				}
 
 				if(!node.Collapsed){
+					// TODO: Replace with better looking option.
 					if(SelectedSettings.allowNodeLinking && GUILayout.Button ("Link To...")){
 						_nodeToLink = node;
 						_linkingNode = true;
@@ -798,8 +810,8 @@ namespace AnyGraph{
 		/// Updates the scroll position to stay locked on position even if extents changed.
 		/// </summary>
 		private void UpdateScrollPosition (){
-			scrollPos.x = scrollPos.x + (_lastGraphExtents.xMin - _graphExtents.xMin);
-			scrollPos.y = scrollPos.y + (_lastGraphExtents.yMin - _graphExtents.yMin);
+			_scrollPos.x = _scrollPos.x + (_lastGraphExtents.xMin - _graphExtents.xMin);
+			_scrollPos.y = _scrollPos.y + (_lastGraphExtents.yMin - _graphExtents.yMin);
 			_lastGraphExtents = _graphExtents;
 		}
 
@@ -888,16 +900,16 @@ namespace AnyGraph{
 				case EventType.MouseDrag:{
 				if (GUIUtility.hotControl == controlID){
 					Vector2 delta = current.delta;
-					if((delta.x < 0 && position.width - _optionWindowRect.width + scrollPos.x + _graphExtents.xMin - delta.x > _graphExtents.xMax) ||
-					   (delta.x > 0 && scrollPos.x + _graphExtents.xMin - delta.x < _graphExtents.xMin)){
+					if((delta.x < 0 && position.width - _toolbarRect.width + _scrollPos.x + _graphExtents.xMin - delta.x > _graphExtents.xMax) ||
+					   (delta.x > 0 && _scrollPos.x + _graphExtents.xMin - delta.x < _graphExtents.xMin)){
 						delta.x = 0;
 					}
 
-					if((delta.y < 0 && position.height + scrollPos.y + _graphExtents.yMin - delta.y > _graphExtents.yMax) ||
-					   (delta.y > 0 && scrollPos.y + _graphExtents.yMin - delta.y < _graphExtents.yMin)){
+					if((delta.y < 0 && position.height + _scrollPos.y + _graphExtents.yMin - delta.y > _graphExtents.yMax) ||
+					   (delta.y > 0 && _scrollPos.y + _graphExtents.yMin - delta.y < _graphExtents.yMin)){
 						delta.y = 0;
 					}
-						scrollPos -= delta;
+						_scrollPos -= delta;
 						current.Use ();
 					}
 					break;
@@ -1092,20 +1104,20 @@ namespace AnyGraph{
 			extents.xMin -= 100;
 			extents.yMin -= 100;
 			
-			if(extents.xMax < position.width - _optionWindowRect.width + scrollPos.x + extents.xMin){
-				extents.xMax = position.width - _optionWindowRect.width + scrollPos.x + extents.xMin;
+			if(extents.xMax < position.width - _toolbarRect.width + _scrollPos.x + extents.xMin){
+				extents.xMax = position.width - _toolbarRect.width + _scrollPos.x + extents.xMin;
 			}
 			
-			if(extents.xMin > scrollPos.x + extents.xMin){
-				extents.xMin = scrollPos.x + extents.xMin;
+			if(extents.xMin > _scrollPos.x + extents.xMin){
+				extents.xMin = _scrollPos.x + extents.xMin;
 			}
 			
-			if(extents.yMax < position.height + scrollPos.y + extents.yMin){
-				extents.yMax = position.height + scrollPos.y + extents.yMin;
+			if(extents.yMax < position.height + _scrollPos.y + extents.yMin){
+				extents.yMax = position.height + _scrollPos.y + extents.yMin;
 			}
 			
-			if(extents.yMin > scrollPos.y + extents.yMin){
-				extents.yMin = scrollPos.y + extents.yMin;
+			if(extents.yMin > _scrollPos.y + extents.yMin){
+				extents.yMin = _scrollPos.y + extents.yMin;
 			}
 
 			return extents;
