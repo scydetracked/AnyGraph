@@ -462,7 +462,7 @@ namespace AnyGraph{
 			GUILayout.BeginArea (_toolbarRect);
 			int offsetStep = 42;
 			int curOffset = -offsetStep;
-			if(_selected == null || SelectedSettings.allowNodeLinking){
+			if(_selected == null || _selected is IAnyGraphableLinkable){
 				if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Connect"], "Connect Selected Nodes Together."))){
 					// TODO: Implement node connecting here.
 					Debug.LogWarning ("Node connecting has not yet been implemented.");
@@ -506,7 +506,6 @@ namespace AnyGraph{
 				// Foldout containing graph settings.
 				SelectedSettings.nodePlacementOffset = EditorGUILayout.Vector2Field ("Auto-Placement Offset", SelectedSettings.nodePlacementOffset);
 				SelectedSettings.structuringMode = (AnyGraphSettings.GraphOrganizingMode)EditorGUILayout.EnumPopup ("Placement Type", SelectedSettings.structuringMode);
-				SelectedSettings.allowNodeLinking = EditorGUILayout.Toggle ("Allow Node Linking", SelectedSettings.allowNodeLinking);
 				SelectedSettings.drawLinkOnTop = EditorGUILayout.Toggle ("Draw Links On Top", SelectedSettings.drawLinkOnTop);
 				SelectedSettings.linkWidth = EditorGUILayout.FloatField ("Link Width", SelectedSettings.linkWidth);
 				SelectedSettings.baseLinkColor = EditorGUILayout.ColorField ("Base Link Color", SelectedSettings.baseLinkColor);
@@ -727,11 +726,7 @@ namespace AnyGraph{
 				}
 
 				if(!node.Collapsed){
-					// TODO: Replace with better looking option.
-					if(SelectedSettings.allowNodeLinking && GUILayout.Button ("Link To...")){
-						_nodeToLink = node;
-						_linkingNode = true;
-					}
+					// TODO: Implement node linking button somewhere here.
 
 					_selected.DrawNode (node.representedNode);
 
@@ -811,7 +806,7 @@ namespace AnyGraph{
 			if (current.type == EventType.MouseDown && current.button == 0){
 				if(_linkingNode){
 					if(n.representedNode != _nodeToLink){
-						_selected.ConnectNodes (_nodeToLink.representedNode.EditorObj, n.representedNode.EditorObj);
+						(_selected as IAnyGraphableLinkable).ConnectNodes (_nodeToLink.representedNode.EditorObj, n.representedNode.EditorObj);
 						_nodeToLink = null;
 						_linkingNode = false;
 						Repaint ();

@@ -52,11 +52,6 @@ namespace AnyGraph{
 		public string SettingsType;
 
 		/// <summary>
-		/// If set to true, the editor will allow connecting nodes together.
-		/// </summary>
-		public bool allowNodeLinking = false;
-
-		/// <summary>
 		/// The structuring mode used by the graph.
 		/// </summary>
 		public GraphOrganizingMode structuringMode = GraphOrganizingMode.Pack;
