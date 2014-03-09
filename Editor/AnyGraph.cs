@@ -668,13 +668,19 @@ namespace AnyGraph{
 			}
 
 			if(!string.IsNullOrEmpty (_searchString)){
-				if(!recolored && node.representedNode.Name.ToLower ().Contains (_searchString.ToLower ())){
+				string realSearchString = _searchString;
+
+				if(realSearchString.StartsWith ("link:") || realSearchString.StartsWith("node:")){
+					realSearchString = _searchString.Remove (0, 5);
+				}
+
+				if(!recolored && !_searchString.StartsWith ("link:") && node.representedNode.Name.ToLower ().Contains (realSearchString.ToLower ())){
 					nodeColor = UnityEditor.Graphs.Styles.Color.Green;
 					recolored = true;
 				}
 
-				for(int i = 0; !recolored && i < node.links.Count; i++){
-					if(node.links[i].linkName.ToLower ().Contains (_searchString.ToLower ())){
+				for(int i = 0; !recolored && !_searchString.StartsWith ("node:") && i < node.links.Count; i++){
+					if(node.links[i].linkName.ToLower ().Contains (realSearchString.ToLower ())){
 						nodeColor = UnityEditor.Graphs.Styles.Color.Green;
 						recolored = true;
 					}
