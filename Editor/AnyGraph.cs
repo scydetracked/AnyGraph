@@ -72,6 +72,8 @@ namespace AnyGraph{
 
 		private Dictionary<string, Texture> textures = new Dictionary<string, Texture>();
 	
+		private string _searchString = "";
+
 		private const string _settingsPath = "Assets/AnyGraphSettings.asset";
 		private AnyGraphSavedSettings _loadedSettings;
 		private AnyGraphSettings SelectedSettings{
@@ -104,9 +106,16 @@ namespace AnyGraph{
 				string proString = Application.HasProLicense () ? "_pro" : "";
 				for(int i = 0; i < texuresToAdd.Length; i++){
 					textures.Add (texuresToAdd[i], AssetDatabase.LoadAssetAtPath (assetPath + texuresToAdd[i] + proString + ".png", typeof(Texture)) as Texture);
+					if(textures[texuresToAdd[i]] == null){
+						Debug.LogWarning(string.Format ("Could not locate texture \"{0}\"", texuresToAdd[i]));
+					}
 				}
 			}
 
+			Reset ();
+		}
+
+		private void OnDisable(){
 			Reset ();
 		}
 
@@ -148,6 +157,9 @@ namespace AnyGraph{
 			_needRearrange = false;
 			_rearrange = null;
 
+			_searchString = "";
+
+			// Call on the garbage collector to free up resources.
 			System.GC.Collect ();
 		}
 
@@ -155,6 +167,10 @@ namespace AnyGraph{
 		/// Handles the input events for zooming and cancelling node linking.
 		/// </summary>
 		private void HandleEvents(){
+			if(Event.current.type == EventType.MouseDown){
+				EditorGUIUtility.keyboardControl = 0;
+			}
+
 			if (Event.current.type == EventType.ScrollWheel){
 				Vector2 screenCoordsMousePos = Event.current.mousePosition;
 				Vector2 delta = Event.current.delta;
@@ -253,11 +269,20 @@ namespace AnyGraph{
 		}
 
 		private void OnGUI(){
-			// Draw the grid and background.
-			GUI.Box (new Rect(0, 0, position.width, position.height), "", UnityEditor.Graphs.Styles.graphBackground);
-			DrawGrid ();
 
-			_zoomArea = new Rect(0, 0, position.width - _toolbarRect.width, position.height);
+			// Draw the grid and background.
+			Rect grapphRect = new Rect(0, 0, position.width - _toolbarRect.width, position.height);
+			GUI.Box (grapphRect, "", UnityEditor.Graphs.Styles.graphBackground);
+			DrawGrid (grapphRect);
+			
+			// Draw the search bar.
+			Rect searchBarRect = new Rect(0, 0, position.width - _toolbarRect.width, 16);
+			DrawSearchBar (searchBarRect);
+
+			// Draw the Toolbar.
+			DrawToolbar();
+
+			_zoomArea = new Rect(0, searchBarRect.height, position.width - _toolbarRect.width, position.height - searchBarRect.height);
 
 			// If it isn't a repaint event, we can modify the node and links.
 			if(Event.current.type != EventType.Repaint){
@@ -311,8 +336,8 @@ namespace AnyGraph{
 				RemoveNotification ();
 			}
 
-			Rect scrollViewRect = EditorZoomArea.Begin (_zoom, new Rect(0, 0, position.width - _toolbarRect.width, position.height));
-			scrollViewRect.y -= 21;
+			Rect scrollViewRect = EditorZoomArea.Begin (_zoom, new Rect(0, 0, position.width - _toolbarRect.width, position.height - searchBarRect.height), searchBarRect.height);
+			scrollViewRect.y -= 21 + searchBarRect.height;
 
 			if(scrollViewRect.width > _graphExtents.width){
 				_scrollPos.x += (scrollViewRect.width - _graphExtents.width) / 2;
@@ -346,8 +371,6 @@ namespace AnyGraph{
 
 			GUI.EndScrollView();
 			EditorZoomArea.End ();
-
-			DrawToolbar();
 		}
 
 		#region Drawing Functions
@@ -415,6 +438,15 @@ namespace AnyGraph{
 			menu.ShowAsContext ();
 		}
 
+		private void DrawSearchBar(Rect area){
+			GUI.BeginGroup (area, GUI.skin.FindStyle("Toolbar"));
+			_searchString = GUI.TextField (new Rect(4, (area.height - 15) / 2, position.width - _toolbarRect.width - 19, 15), _searchString, GUI.skin.FindStyle("ToolbarSeachTextField"));
+			if(GUI.Button (new Rect(position.width - _toolbarRect.width - 19, (area.height - 15) / 2, 15, 15), "", GUI.skin.FindStyle("ToolbarSeachCancelButton"))){
+				_searchString = "";
+			}
+			GUI.EndGroup ();
+		}
+
 		/// <summary>
 		/// Draws the options window. All custom drawing from IAnyGraphable will be called in here as well.
 		/// </summary>
@@ -426,11 +458,11 @@ namespace AnyGraph{
 				_toolbarRect = new Rect(position.width - 42, 0, 42, position.height);
 			}
 
-			GUI.Box (_toolbarRect, GUIContent.none);
+			GUI.Box (_toolbarRect, "", UnityEditor.Graphs.Styles.graphBackground);
 			GUILayout.BeginArea (_toolbarRect);
 			int offsetStep = 42;
 			int curOffset = -offsetStep;
-			if(SelectedSettings.allowNodeLinking){
+			if(_selected == null || SelectedSettings.allowNodeLinking){
 				if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Connect"], "Connect Selected Nodes Together."))){
 					// TODO: Implement node connecting here.
 					Debug.LogWarning ("Node connecting has not yet been implemented.");
@@ -440,19 +472,19 @@ namespace AnyGraph{
 					Debug.LogWarning ("Node disconnecting has not yet been implemented.");
 				}
 			}
-			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Collapse"], "Collapse Selected Nodes."))){
+			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Collapse"], "Collapse Selected Nodes.")) && _selected != null){
 				for(int i = 0; i < _selection.Count; i++){
 					_selection[i].Collapsed = true;
 				}
 				RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 			}
-			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Expand"], "Expand Selected Nodes."))){
+			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Expand"], "Expand Selected Nodes.")) && _selected != null){
 				for(int i = 0; i < _selection.Count; i++){
 					_selection[i].Collapsed = false;
 				}
 				RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 			}
-			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["BreakPoint"], "Toggle breakpoints on selected nodes."))){
+			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["BreakPoint"], "Toggle breakpoints on selected nodes.")) && _selected != null){
 				for(int i = 0; i < _selection.Count; i++){
 					_selection[i].breakpoint = !_selection[i].breakpoint;
 					if(!_selection[i].breakpoint){
@@ -460,10 +492,10 @@ namespace AnyGraph{
 					}
 				}
 			}
-			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Refresh"], "Force The Graph To Refresh."))){
+			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Refresh"], "Force The Graph To Refresh.")) && _selected != null){
 				Reset ();
 			}
-			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Options"], "Open The Options WIndow."))){
+			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Options"], "Open The Options WIndow.")) && _selected != null){
 				_optionWindowOpen = !_optionWindowOpen;
 			}
 
@@ -514,15 +546,15 @@ namespace AnyGraph{
 		/// <summary>
 		/// Draws the background grid.
 		/// </summary>
-		private void DrawGrid (){
+		private void DrawGrid (Rect area){
 			if (Event.current.type != EventType.Repaint){
 				return;
 			}
 			Profiler.BeginSample ("DrawGrid");
 			GL.PushMatrix ();
 			GL.Begin (1);
-			DrawGridLines (15f, Color.white);
-			DrawGridLines (150f, Color.gray);
+			DrawGridLines (15f, Color.white, area);
+			DrawGridLines (150f, Color.gray, area);
 			GL.End ();
 			GL.PopMatrix ();
 			Profiler.EndSample ();
@@ -533,9 +565,7 @@ namespace AnyGraph{
 		/// </summary>
 		/// <param name="gridSize">Line spacing.</param>
 		/// <param name="gridColor">Line color.</param>
-		private void DrawGridLines (float gridSize, Color gridColor){
-			Rect extents = new Rect(0, 0, position.width - _toolbarRect.width, position.height);
-			
+		private void DrawGridLines (float gridSize, Color gridColor, Rect extents){
 			GL.Color (gridColor);
 			for (float num = extents.xMin - extents.xMin % gridSize; num < extents.xMax; num += gridSize){
 				DrawGridLine (new Vector2 (num, extents.yMin), new Vector2 (num, extents.yMax));
@@ -620,35 +650,17 @@ namespace AnyGraph{
 		/// </summary>
 		/// <param name="node">Node to draw.</param>
 		private void DrawNode(Node node){
+			if(node.representedNode == null){
+				return;
+			}
+
 			UnityEditor.Graphs.Styles.Color nodeColor = UnityEditor.Graphs.Styles.Color.Gray;
+			bool recolored = false;
 
-			// Color if the node is going to the selected node.
-			if(SelectedSettings.colorToSelected){
-				foreach(Link l in node.links){
-					if(_selection.Select (x => x.guid).Contains (l.guid)){
-						nodeColor = (UnityEditor.Graphs.Styles.Color)(int)SelectedSettings.toNodeColor;
-						break;
-					}
-				}
-			}
-
-			// Color if the node is coming from the selected node.
-			if(SelectedSettings.colorFromSelected){
-				foreach(Node selectedNode in _selection){
-					if(selectedNode.links.Select (x => x.guid).Contains (node.guid)){
-						nodeColor = (UnityEditor.Graphs.Styles.Color)(int)SelectedSettings.fromNodeColor;
-						break;
-					}
-				}
-			}
-
-			// Color if node is selected.
-			if(_selection.Contains (node)){
-				nodeColor = (UnityEditor.Graphs.Styles.Color)(int)SelectedSettings.selectedNodeColor;
-			}
-
+			// Color if the node is in the active path.
 			if(node.active){
 				nodeColor = UnityEditor.Graphs.Styles.Color.Red;
+				recolored = true;
 				node.active = false;
 				if(node.breakpoint && !EditorApplication.isPaused && EditorApplication.isPlaying){
 					Debug.LogWarning (string.Format ("Debug breakpoint triggered by node \"{0}\".\nNode's path is \"{1}\"", node.representedNode.Name, node.NodePath));
@@ -656,11 +668,49 @@ namespace AnyGraph{
 				}
 			}
 
-			// Draw node.
-			if(node.representedNode == null){
-				return;
+			if(!string.IsNullOrEmpty (_searchString)){
+				if(!recolored && node.representedNode.Name.ToLower ().Contains (_searchString.ToLower ())){
+					nodeColor = UnityEditor.Graphs.Styles.Color.Green;
+					recolored = true;
+				}
+
+				for(int i = 0; !recolored && i < node.links.Count; i++){
+					if(node.links[i].linkName.ToLower ().Contains (_searchString.ToLower ())){
+						nodeColor = UnityEditor.Graphs.Styles.Color.Green;
+						recolored = true;
+					}
+				}
 			}
 
+			// Color if the node is going to the selected node.
+			if(SelectedSettings.colorToSelected && !recolored){
+				foreach(Link l in node.links){
+					if(_selection.Select (x => x.guid).Contains (l.guid)){
+						nodeColor = (UnityEditor.Graphs.Styles.Color)(int)SelectedSettings.toNodeColor;
+						recolored = true;
+						break;
+					}
+				}
+			}
+
+			// Color if the node is coming from the selected node.
+			if(SelectedSettings.colorFromSelected && !recolored){
+				foreach(Node selectedNode in _selection){
+					if(selectedNode.links.Select (x => x.guid).Contains (node.guid)){
+						nodeColor = (UnityEditor.Graphs.Styles.Color)(int)SelectedSettings.fromNodeColor;
+						recolored = true;
+						break;
+					}
+				}
+			}
+
+			// Color if node is selected.
+			if(!recolored && _selection.Contains (node)){
+				nodeColor = (UnityEditor.Graphs.Styles.Color)(int)SelectedSettings.selectedNodeColor;
+				recolored = true;
+			}
+
+			// Draw node.
 			node.nodePos = GUILayout.Window (_allNodes.FindIndex (x => x.Equals(node)), node.nodePos, delegate{
 				float width = GUILayoutUtility.GetRect (new GUIContent(node.representedNode.Name), "Label").width;
 				SelectNode (node);
@@ -1453,11 +1503,11 @@ namespace AnyGraph{
 		private const float kEditorWindowTabHeight = 21.0f;
 		private static Matrix4x4 _prevGuiMatrix;
 		
-		public static Rect Begin(float zoomScale, Rect screenCoordsArea){
+		public static Rect Begin(float zoomScale, Rect screenCoordsArea, float yOffset){
 			GUI.EndGroup();        // End the group Unity begins automatically for an EditorWindow to clip out the window tab. This allows us to draw outside of the size of the EditorWindow.
 			
 			Rect clippedArea = screenCoordsArea.ScaleSizeBy(1.0f / zoomScale, screenCoordsArea.TopLeft());
-			clippedArea.y += kEditorWindowTabHeight;
+			clippedArea.y += kEditorWindowTabHeight + yOffset;
 			GUI.BeginGroup(clippedArea);
 			
 			_prevGuiMatrix = GUI.matrix;
