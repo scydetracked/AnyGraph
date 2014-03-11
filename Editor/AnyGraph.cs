@@ -812,7 +812,7 @@ namespace AnyGraph{
 			if (current.type == EventType.MouseDown && current.button == 0){
 				if(_linkingNode){
 					if(n.representedNode != _nodeToLink){
-						(_selected as IAnyGraphableLinkable).ConnectNodes (_nodeToLink.representedNode.EditorObj, n.representedNode.EditorObj);
+						(_selected as IAnyGraphableLinkable).ConnectNodes (_nodeToLink.representedNode, n.representedNode);
 						_nodeToLink = null;
 						_linkingNode = false;
 						Repaint ();

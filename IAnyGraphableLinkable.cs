@@ -28,12 +28,12 @@ public interface IAnyGraphableLinkable : IAnyGraphable {
 	/// </summary>
 	/// <param name='n1'>Source Node.</param>
 	/// <param name='n2'>Target Node.</param>
-	void ConnectNodes(UnityEngine.Object n1, UnityEngine.Object n2);
+	void ConnectNodes(IAnyGraphNode n1, IAnyGraphNode n2);
 	
 	/// <summary>
 	/// Called by AnyGraph when disconnecting two nodes.
 	/// </summary>
 	/// <param name="n1">Node 1.</param>
 	/// <param name="n2">Node 2.</param>
-	void DisconnectNodes(UnityEngine.Object n1, UnityEngine.Object n2);
+	void DisconnectNodes(IAnyGraphNode n1, IAnyGraphNode n2);
 }
