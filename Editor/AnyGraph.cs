@@ -69,6 +69,7 @@ namespace AnyGraph{
 
 		private bool _needRearrange = false;
 		private IEnumerator _rearrange;
+		private bool _passedRepaint = false;
 
 		private Dictionary<string, Texture> textures = new Dictionary<string, Texture>();
 	
@@ -107,7 +108,7 @@ namespace AnyGraph{
 				for(int i = 0; i < texuresToAdd.Length; i++){
 					textures.Add (texuresToAdd[i], AssetDatabase.LoadAssetAtPath (assetPath + texuresToAdd[i] + proString + ".png", typeof(Texture)) as Texture);
 					if(textures[texuresToAdd[i]] == null){
-						Debug.LogWarning(string.Format ("Could not locate texture \"{0}\"", texuresToAdd[i]));
+						Debug.LogWarning(string.Format ("AnyGraph-> Could not locate texture \"{0}\"", texuresToAdd[i]));
 					}
 				}
 			}
@@ -313,16 +314,21 @@ namespace AnyGraph{
 					CheckNodeLinks ();
 
 					// Move to the next rearrange iteration if it isn't null.
-					if(_rearrange != null){
+					if(_rearrange != null && _passedRepaint){
+						_passedRepaint = false;
 						if(!_rearrange.MoveNext ()){
 							_rearrange = null;
 						}
 					}
 					// Start a new rearrange if the instance was null and the graph needs rearranging.
 					else if(_needRearrange){
+						_passedRepaint = false;
 						RearrangeTree(SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 					}
 				}
+			}
+			else{
+				_passedRepaint = true;
 			}
 			
 			HandleEvents ();
@@ -465,11 +471,11 @@ namespace AnyGraph{
 			if(_selected == null || _selected is IAnyGraphableLinkable){
 				if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Connect"], "Connect Selected Nodes Together."))){
 					// TODO: Implement node connecting here.
-					Debug.LogWarning ("Node connecting has not yet been implemented.");
+					Debug.LogWarning ("AnyGraph-> Node connecting has not yet been implemented.");
 				}
 				if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Disconnect"], "Disconnect Selected Nodes."))){
 					// TODO: Implement node disconnecting here.
-					Debug.LogWarning ("Node disconnecting has not yet been implemented.");
+					Debug.LogWarning ("AnyGraph-> Node disconnecting has not yet been implemented.");
 				}
 			}
 			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Collapse"], "Collapse Selected Nodes.")) && _selected != null){
@@ -662,7 +668,7 @@ namespace AnyGraph{
 				recolored = true;
 				node.active = false;
 				if(node.breakpoint && !EditorApplication.isPaused && EditorApplication.isPlaying){
-					Debug.LogWarning (string.Format ("Debug breakpoint triggered by node \"{0}\".\nNode's path is \"{1}\"", node.representedNode.Name, node.NodePath));
+					Debug.LogWarning (string.Format ("AnyGraph-> Debug breakpoint triggered by node \"{0}\".\nNode's path is \"{1}\"", node.representedNode.Name, node.NodePath));
 					Debug.Break ();
 				}
 			}
@@ -1217,7 +1223,7 @@ namespace AnyGraph{
 		private void CheckNodeLinks(){
 			for(int i = 0; i < _allNodes.Count; i++){
 				if(_allNodes[i].representedNode.Links.Count != _allNodes[i].links.Count){
-					Debug.Log ("Links did not match in a node, regenerating node map.");
+					Debug.Log ("AnyGraph-> Links did not match in a node, regenerating node map.");
 					GenerateCompleteNodeMap (_selected.Nodes);
 					return;
 				}
@@ -1231,7 +1237,7 @@ namespace AnyGraph{
 
 			for(int i = 0; i < _cachedNodes.Count; i++){
 				if(!selectedNodes.Contains (_cachedNodes[i])){
-					Debug.Log ("A node was removed, regenerating node map.");
+					Debug.Log ("AnyGraph-> A node was removed, regenerating node map.");
 					GenerateCompleteNodeMap (_selected.Nodes);
 					return;
 				}
@@ -1240,7 +1246,7 @@ namespace AnyGraph{
 			}
 
 			if(selectedNodes.Count > 0){
-				Debug.Log ("A node was added, regenerating node map.");
+				Debug.Log ("AnyGraph-> A node was added, regenerating node map.");
 				GenerateCompleteNodeMap (_selected.Nodes);
 			}
 		}
@@ -1254,6 +1260,7 @@ namespace AnyGraph{
 			if(_rearrange == null){
 				_rearrange = RearrangeNodesAsTree (xSpacing, ySpacing);
 				_rearrange.MoveNext ();
+				_needRearrange = false;
 			}
 		}
 
