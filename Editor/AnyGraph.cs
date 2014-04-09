@@ -36,6 +36,8 @@ namespace AnyGraph{
 
 		private const float kZoomMin = 0.1f;
 		private const float kZoomMax = 1f;
+		private const int kFrameThrottle = 4;
+		private const float kToolbarButtonSize = 40;
 		
 		private Rect _zoomArea;
 		private float _zoom = 1.0f;
@@ -75,6 +77,7 @@ namespace AnyGraph{
 	
 		private string _searchString = "";
 
+		// Settings are saved on a per-type basis. When trying to access unexisting settings, a new instance is created and saved in the project.
 		private const string _settingsPath = "Assets/AnyGraphSettings.asset";
 		private AnyGraphSavedSettings _loadedSettings;
 		private AnyGraphSettings SelectedSettings{
@@ -97,6 +100,7 @@ namespace AnyGraph{
 		}
 
 		private void OnEnable(){
+			// Load the required textures if they haven't been loaded yet.
 			if(textures.Count == 0){
 				string[] texuresToAdd = new string[]{"Connect", "Disconnect", "Options", "Collapse", "Expand", "Refresh", "BreakPoint"};
 				
@@ -212,18 +216,18 @@ namespace AnyGraph{
 		}
 
 		/// <summary>
-		/// Updates the GUI. Base GUI update is 100 times per frame.
-		/// Throttling the update to 25 per frame.
+		/// Updates the GUI. Base GUI update is 100 times per second.
+		/// GUI updates are throttled to 100 / kFrameThrottle times per second.
 		/// </summary>
 		private void Update(){
-			if(_updateThrottler%4 == 0){
+			if(_updateThrottler == 0){
 				Repaint ();
 			}
-			_updateThrottler = _updateThrottler++%10000;
+			_updateThrottler = _updateThrottler++ % kFrameThrottle;
 		}
 
 		/// <summary>
-		/// Generates a complete node map to be used by the graph.
+		/// Generates a recursive node map to be used by the graph.
 		/// </summary>
 		/// <param name="nodes">Nodes to generate a map for.</param>
 		private void GenerateCompleteNodeMap(List<IAnyGraphNode> nodes){
@@ -342,6 +346,7 @@ namespace AnyGraph{
 				RemoveNotification ();
 			}
 
+			// Set the main view rect by removing the search bar and toolbar from the window size.
 			Rect scrollViewRect = EditorZoomArea.Begin (_zoom, new Rect(0, 0, position.width - _toolbarRect.width, position.height - searchBarRect.height), searchBarRect.height);
 			scrollViewRect.y -= 21 + searchBarRect.height;
 
@@ -353,12 +358,13 @@ namespace AnyGraph{
 				_scrollPos.y += (scrollViewRect.height - _graphExtents.height) / 2;
 			}
 
+			// Start graph scroll view.
 			_scrollPos = GUI.BeginScrollView (scrollViewRect, _scrollPos, _graphExtents, GUIStyle.none, GUIStyle.none);
 
 			// Get the current active path from the selected IAnyGraphable.
 			// Recursively set active nodes.
 			string[] activePath = _selected.ActiveNodePath;
-			if(activePath.Length > 0){
+			if(activePath != null && activePath.Length > 0){
 				for(int i = 0; i < _allNodes.Count; i++){
 					if(_allNodes[i].isRoot && _allNodes[i].representedNode.Name == activePath[0]){
 						_allNodes[i].SetActiveRecursively (activePath, 0);
@@ -383,7 +389,7 @@ namespace AnyGraph{
 		/// <summary>
 		/// Draw the context menu for multiple nodes.
 		/// </summary>
-		/// <param name="n">Nodes to draw.</param>
+		/// <param name="n">Nodes affected by context menu.</param>
 		private void DrawContextMenu(Node[] n){
 			GenericMenu menu = new GenericMenu();
 			menu.AddItem (new GUIContent("Debug/Set Breakpoint"), false, delegate() {
@@ -425,6 +431,7 @@ namespace AnyGraph{
 				menu.AddDisabledItem (new GUIContent("Formating/Collapse All But This"));
 			}
 
+			// Add custom actions that have been defined by the implementation, if any.
 			KeyValuePair<string, System.Action<IAnyGraphNode>>[] customActions = _selected.ContextActions;
 			if(customActions.Length > 0){
 				menu.AddSeparator ("");
@@ -438,12 +445,17 @@ namespace AnyGraph{
 				});
 			}
 
+			// TODO: Need to fix the positioning of the context menu.
 			Vector2 mousePos = (Event.current.mousePosition);
 			menu.DropDown (new Rect(mousePos.x, mousePos.y, 0, 0));
 			
 			menu.ShowAsContext ();
 		}
 
+		/// <summary>
+		/// Draws the search bar at the top of the window.
+		/// </summary>
+		/// <param name="area">Search bar area.</param>
 		private void DrawSearchBar(Rect area){
 			GUI.BeginGroup (area, GUI.skin.FindStyle("Toolbar"));
 			_searchString = GUI.TextField (new Rect(4, (area.height - 15) / 2, position.width - _toolbarRect.width - 19, 15), _searchString, GUI.skin.FindStyle("ToolbarSeachTextField"));
@@ -457,6 +469,7 @@ namespace AnyGraph{
 		/// Draws the options window. All custom drawing from IAnyGraphable will be called in here as well.
 		/// </summary>
 		private void DrawToolbar(){
+			// Set the toolbar rect size depending on its state.
 			if(_optionWindowOpen){
 				_toolbarRect = new Rect(position.width - 322, 0, 322, position.height);
 			}
@@ -466,31 +479,31 @@ namespace AnyGraph{
 
 			GUI.Box (_toolbarRect, "", UnityEditor.Graphs.Styles.graphBackground);
 			GUILayout.BeginArea (_toolbarRect);
-			int offsetStep = 42;
+			int offsetStep = Mathf.RoundToInt (kToolbarButtonSize) + 2;
 			int curOffset = -offsetStep;
 			if(_selected == null || _selected is IAnyGraphableLinkable){
-				if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Connect"], "Connect Selected Nodes Together."))){
+				if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, kToolbarButtonSize, kToolbarButtonSize), new GUIContent(textures["Connect"], "Connect Selected Nodes Together."))){
 					// TODO: Implement node connecting here.
 					Debug.LogWarning ("AnyGraph-> Node connecting has not yet been implemented.");
 				}
-				if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Disconnect"], "Disconnect Selected Nodes."))){
+				if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, kToolbarButtonSize, kToolbarButtonSize), new GUIContent(textures["Disconnect"], "Disconnect Selected Nodes."))){
 					// TODO: Implement node disconnecting here.
 					Debug.LogWarning ("AnyGraph-> Node disconnecting has not yet been implemented.");
 				}
 			}
-			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Collapse"], "Collapse Selected Nodes.")) && _selected != null){
+			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, kToolbarButtonSize, kToolbarButtonSize), new GUIContent(textures["Collapse"], "Collapse Selected Nodes.")) && _selected != null){
 				for(int i = 0; i < _selection.Count; i++){
 					_selection[i].Collapsed = true;
 				}
 				RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 			}
-			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Expand"], "Expand Selected Nodes.")) && _selected != null){
+			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, kToolbarButtonSize, kToolbarButtonSize), new GUIContent(textures["Expand"], "Expand Selected Nodes.")) && _selected != null){
 				for(int i = 0; i < _selection.Count; i++){
 					_selection[i].Collapsed = false;
 				}
 				RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 			}
-			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["BreakPoint"], "Toggle breakpoints on selected nodes.")) && _selected != null){
+			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, kToolbarButtonSize, kToolbarButtonSize), new GUIContent(textures["BreakPoint"], "Toggle breakpoints on selected nodes.")) && _selected != null){
 				for(int i = 0; i < _selection.Count; i++){
 					_selection[i].breakpoint = !_selection[i].breakpoint;
 					if(!_selection[i].breakpoint){
@@ -498,18 +511,18 @@ namespace AnyGraph{
 					}
 				}
 			}
-			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Refresh"], "Force The Graph To Refresh.")) && _selected != null){
+			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, kToolbarButtonSize, kToolbarButtonSize), new GUIContent(textures["Refresh"], "Force The Graph To Refresh.")) && _selected != null){
 				Reset ();
 			}
-			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, 40, 40), new GUIContent(textures["Options"], "Open The Options WIndow.")) && _selected != null){
+			if(GUI.Button (new Rect(1, curOffset = curOffset + offsetStep, kToolbarButtonSize, kToolbarButtonSize), new GUIContent(textures["Options"], "Open The Options WIndow.")) && _selected != null){
 				_optionWindowOpen = !_optionWindowOpen;
 			}
 
+			// Options window. Will be drawn only if it is opened.
 			GUI.BeginGroup (new Rect(42, 0, _toolbarRect.width - 42, _toolbarRect.height));
 			if(_optionWindowOpen){
 				_optionWindowScrollPos = GUILayout.BeginScrollView(_optionWindowScrollPos, GUILayout.MaxHeight (_toolbarRect.height - 20),GUILayout.MaxWidth (_toolbarRect.width - 42));
 
-				// Foldout containing graph settings.
 				SelectedSettings.nodePlacementOffset = EditorGUILayout.Vector2Field ("Auto-Placement Offset", SelectedSettings.nodePlacementOffset);
 				SelectedSettings.structuringMode = (AnyGraphSettings.GraphOrganizingMode)EditorGUILayout.EnumPopup ("Placement Type", SelectedSettings.structuringMode);
 				SelectedSettings.drawLinkOnTop = EditorGUILayout.Toggle ("Draw Links On Top", SelectedSettings.drawLinkOnTop);
@@ -622,6 +635,7 @@ namespace AnyGraph{
 				}
 			}
 
+			// Draw an extra link if the user is currently connecting a node.
 			if(_linkingNode){
 				if(_nodeToLink == null){
 					_linkingNode = false;

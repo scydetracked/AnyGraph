@@ -25,6 +25,9 @@ using System.Collections;
 using System.Collections.Generic;
 
 namespace AnyGraph{
+	/// <summary>
+	/// This scriptable object is just a collection of the settings used by AnyGraph. Each entry in the array represents a type that has been used in AnyGraph.
+	/// </summary>
 	public class AnyGraphSavedSettings : ScriptableObject {
 		[SerializeField] private AnyGraphSettings[] allSettings;
 

@@ -61,5 +61,9 @@ public interface IAnyGraphable{
 	/// <value>The active node path.</value>
 	string[] ActiveNodePath{get;}
 
+	/// <summary>
+	/// Any actions delcared in this array will appear in the graphs context menu.
+	/// </summary>
+	/// <value>The context actions.</value>
 	KeyValuePair<string, System.Action<IAnyGraphNode>>[] ContextActions{get;}
 }

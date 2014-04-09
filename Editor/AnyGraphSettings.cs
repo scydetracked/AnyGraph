@@ -24,7 +24,7 @@ using UnityEngine;
 using System.Collections;
 
 /// <summary>
-/// Settings used by AnyGraph.
+/// Settings used by AnyGraph. Each type that uses AnyGraph will have an instance of this class created to save it's settings.
 /// </summary>
 namespace AnyGraph{
 	[System.Serializable]
