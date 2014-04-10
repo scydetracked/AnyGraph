@@ -1,12 +1,9 @@
 - WHAT IS ANYGRAPH? -
 
 AnyGraph is a relatively simple tool to help you visualize a node-based type structure. It has been developed to be as generic as possible so it can be used on as many tools as possible.
-The more I use it, the more features I try to cram in. Currently, you can visualize the whole graph, collapse nodes that you don't want to see, and add breakpoints that will pause execution when the node becomes active.
+New features are being added in as they are needed. Currently, you can visualize the whole graph, collapse nodes that you don't want to see, and add breakpoints that will pause execution when the node becomes active.
 
-Why make this?
-Simple, I work at game company where we use Unity and one of the tools the studio has is a state machine. When I first started using it, I voiced my dislike for the UI we had to use. I was met with a simple answer : "You don't like it? Make a better one.", and so I did.
-
-Of course, this tool was developed mostly with a state machine in mind, but the possibilities are there for any type of hierarchical, node-based, structure type.
+This tool was developed mostly with a state machine in mind, but the possibilities are there for any type of hierarchical, node-based, structure type.
 You could use it to graph a dialogue tree, a mission progression or skill unlocks, just let your imagination run wild.
 --------------------------------------------------------------------------------------------------------
 
