@@ -433,16 +433,18 @@ namespace AnyGraph{
 
 			// Add custom actions that have been defined by the implementation, if any.
 			KeyValuePair<string, System.Action<IAnyGraphNode>>[] customActions = _selected.ContextActions;
-			if(customActions.Length > 0){
-				menu.AddSeparator ("");
-			}
-			for(int i = 0; i < customActions.Length; i++){
-				int index = i;
-				menu.AddItem (new GUIContent(customActions[i].Key), false, delegate {
-					for(int j = 0; j < n.Length; j++){
-						customActions[index].Value(n[j].representedNode);
-					}
-				});
+			if(customActions != null){
+				if(customActions.Length > 0){
+					menu.AddSeparator ("");
+				}
+				for(int i = 0; i < customActions.Length; i++){
+					int index = i;
+					menu.AddItem (new GUIContent(customActions[i].Key), false, delegate {
+						for(int j = 0; j < n.Length; j++){
+							customActions[index].Value(n[j].representedNode);
+						}
+					});
+				}
 			}
 
 			// TODO: Need to fix the positioning of the context menu.
