@@ -412,6 +412,23 @@ namespace AnyGraph{
 				RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
 			});
 
+			if(n.Length > 0){
+				menu.AddItem (new GUIContent("Formating/Collapse All Instances"), false, delegate() {
+					for(int i = 0; i < _allNodes.Count; i++){
+						for(int j = 0; j < n.Length; j++){
+							if(_allNodes[i].representedNode == n[j].representedNode){
+								_allNodes[i].Collapsed = true;
+								break;
+							}
+						}
+					}
+				});
+				RearrangeTree (SelectedSettings.nodePlacementOffset.x, SelectedSettings.nodePlacementOffset.y);
+			}
+			else{
+				menu.AddDisabledItem (new GUIContent("Formating/Collapse All Instances"));
+			}
+
 			if(n.Length == 1){
 				menu.AddItem (new GUIContent("Formating/Collapse All But This"), false, delegate() {
 					Node current = n[0];
@@ -1286,13 +1303,9 @@ namespace AnyGraph{
 		/// <param name="xSpacing">X spacing.</param>
 		/// <param name="ySpacing">Y spacing.</param>
 		private IEnumerator RearrangeNodesAsTree(float xSpacing, float ySpacing){
+			// Wait two frames so all the nodes can be redrawn and have their size set.
 			yield return null;
-			/*for(int i = 0; i < _allNodes.Count; i++){
-				if(_allNodes[i] != null && _allNodes[i].representedNode.IsNodeRedundant()){
-					Debug.LogWarning ("There is a redundancy in the graph. Aborting tree graphing.");
-					yield break;
-				}
-			}*/
+			yield return null;
 
 			List<List<Node>> allNodeLevels = new List<List<Node>>();
 			List<Node> rootNodes = new List<Node>();
