@@ -725,6 +725,12 @@ namespace AnyGraph{
 					}
 				}
 			}
+			
+			// Color if node is selected.
+			if(!recolored && _selection.Contains (node)){
+				nodeColor = (UnityEditor.Graphs.Styles.Color)(int)SelectedSettings.selectedNodeColor;
+				recolored = true;
+			}
 
 			// Color if the node is going to the selected node.
 			if(SelectedSettings.colorToSelected && !recolored){
@@ -746,12 +752,6 @@ namespace AnyGraph{
 						break;
 					}
 				}
-			}
-
-			// Color if node is selected.
-			if(!recolored && _selection.Contains (node)){
-				nodeColor = (UnityEditor.Graphs.Styles.Color)(int)SelectedSettings.selectedNodeColor;
-				recolored = true;
 			}
 
 			// Draw node.
